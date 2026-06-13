@@ -1130,11 +1130,11 @@ ${historyText}
     // Parse 5 sections
     let reflection = '', overall = '', review = '', nextDir = '', wellness = '';
 
-    const reflectionMatch = text.match(/\[調理思路檢視\]([\s\S]*?)(?=\[客戶整體評估|$)/);
-    const overallMatch = text.match(/\[客戶整體評估與趨勢觀察\]([\s\S]*?)(?=\[本次調理回顧|$)/);
-    const reviewMatch = text.match(/\[本次調理回顧與手法建議\]([\s\S]*?)(?=\[下次調理方向|$)/);
-    const nextMatch = text.match(/\[下次調理方向與重點觀察\]([\s\S]*?)(?=\[客人養生|$)/);
-    const wellnessMatch = text.match(/\[客人養生與居家保健建議\]([\s\S]*?)$/);
+    const reflectionMatch = text.match(/(?:\*{0,2}\[?調理思路檢視\]?\*{0,2})([\s\S]*?)(?=(?:\*{0,2}\[?客戶整體評估|\*{0,2}\[?本次調理回顧)|$)/);
+    const overallMatch = text.match(/(?:\*{0,2}\[?客戶整體評估與趨勢觀察\]?\*{0,2})([\s\S]*?)(?=(?:\*{0,2}\[?本次調理回顧)|$)/);
+    const reviewMatch = text.match(/(?:\*{0,2}\[?本次調理回顧與手法建議\]?\*{0,2})([\s\S]*?)(?=(?:\*{0,2}\[?下次調理方向)|$)/);
+    const nextMatch = text.match(/(?:\*{0,2}\[?下次調理方向與重點觀察\]?\*{0,2})([\s\S]*?)(?=(?:\*{0,2}\[?客人養生)|$)/);
+    const wellnessMatch = text.match(/(?:\*{0,2}\[?客人養生與居家保健建議\]?\*{0,2})([\s\S]*?)$/);
 
     if (reflectionMatch) reflection = reflectionMatch[1].trim();
     if (overallMatch) overall = overallMatch[1].trim();
