@@ -785,6 +785,7 @@ function renderSessions(c) {
       </div>`:''}
       ${s.aiFeedback ? `<div class="ai-feedback-box">
         <div class="ai-header"><span class="ai-badge">AI 專家回饋</span><button class="btn btn-sm btn-ghost" style="margin-left:auto;font-size:11px;" onclick="regenAiFeedback(${i})">重新產生</button></div>
+        ${s.aiFeedback.reflection?`<div class="ai-section"><div class="ai-section-title">🔍 調理思路檢視</div><div class="ai-section-body">${s.aiFeedback.reflection}</div></div>`:''}
         ${s.aiFeedback.overall?`<div class="ai-section"><div class="ai-section-title">📋 客戶整體評估與趨勢觀察</div><div class="ai-section-body">${s.aiFeedback.overall}</div></div>`:''}
         ${s.aiFeedback.review?`<div class="ai-section"><div class="ai-section-title">🔧 本次調理回顧與手法建議</div><div class="ai-section-body">${s.aiFeedback.review}</div></div>`:''}
         ${s.aiFeedback.next?`<div class="ai-section"><div class="ai-section-title">🎯 下次調理方向與重點觀察</div><div class="ai-section-body">${s.aiFeedback.next}</div></div>`:''}
@@ -1071,7 +1072,18 @@ ${historyText}
 預計下次重點：${s.next||'無'}
 
 ═══════════════════════
-請用繁體中文，針對以下四個面向給予回饋。每個面向請用條列式說明，具體且實用，並在每個面向開頭標示對應標題。
+請用繁體中文，依序完成以下所有內容。每個區塊請在開頭標示對應標題。
+
+首先，請完成以下「調理思路檢視」的自我檢查，誠實且具體地逐項回答（每題至少一至二句），再進入後續四個回饋面向：
+
+[調理思路檢視]
+（請逐項回答以下四個問題）
+1. 這次的判斷，有沒有可能太快鎖定某條經絡或某個部位？有的話，是哪裡？為什麼容易落入這個慣性？
+2. 有沒有被「今日主訴」帶著走，忽略了長期體質方向？若有，長期體質方向原本應該怎麼考量？
+3. 從歷次趨勢看，目前的調理策略是延續慣性，還是真的還適合這位客戶現在的狀況？請說明判斷依據。
+4. 有沒有同樣成立的「另一種解讀」？如果有，是什麼？這種解讀會導向不同的調理方向嗎？
+
+完成調理思路檢視後，再針對以下四個面向給予回饋。每個面向請用條列式說明，具體且實用。
 在手法建議與調理方向中，請同時整合**中醫經絡理論**與**現代解剖學觀點**（包含相關肌肉、筋膜鏈、肌動學分析），給予更全面的參考：
 
 [客戶整體評估與趨勢觀察]
@@ -1115,19 +1127,21 @@ ${historyText}
       return;
     }
 
-    // Parse 4 sections
-    let overall = '', review = '', nextDir = '', wellness = '';
-    
+    // Parse 5 sections
+    let reflection = '', overall = '', review = '', nextDir = '', wellness = '';
+
+    const reflectionMatch = text.match(/\[調理思路檢視\]([\s\S]*?)(?=\[客戶整體評估|$)/);
     const overallMatch = text.match(/\[客戶整體評估與趨勢觀察\]([\s\S]*?)(?=\[本次調理回顧|$)/);
     const reviewMatch = text.match(/\[本次調理回顧與手法建議\]([\s\S]*?)(?=\[下次調理方向|$)/);
     const nextMatch = text.match(/\[下次調理方向與重點觀察\]([\s\S]*?)(?=\[客人養生|$)/);
     const wellnessMatch = text.match(/\[客人養生與居家保健建議\]([\s\S]*?)$/);
-    
+
+    if (reflectionMatch) reflection = reflectionMatch[1].trim();
     if (overallMatch) overall = overallMatch[1].trim();
     if (reviewMatch) review = reviewMatch[1].trim();
     if (nextMatch) nextDir = nextMatch[1].trim();
     if (wellnessMatch) wellness = wellnessMatch[1].trim();
-    
+
     // Fallback: try emoji markers
     if (!overall && !review && !nextDir && !wellness) {
       const parts = text.split(/(?=📋|🔧|🎯|🌿|##)/);
@@ -1138,10 +1152,11 @@ ${historyText}
         else if (p.match(/🌿|養生|居家保健/)) wellness = p.replace(/^[🌿\s#]+[^\n]*\n?/, '').trim();
       });
     }
-    
+
     if (!overall && !review && !nextDir && !wellness) review = text;
 
     const aiFeedback = {
+      reflection: reflection,
       overall: overall,
       review: review,
       next: nextDir,
