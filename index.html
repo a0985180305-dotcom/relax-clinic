@@ -1096,7 +1096,9 @@ ${historyText}
 （根據本次反應與客戶整體體質，建議下次優先處理的經絡與部位、對應的解剖結構、施作重點，以及調理前應特別觀察的指標）
 
 [客人養生與居家保健建議]
-（根據體質傾向與現有症狀，給予日常生活中具體可執行的養生方法、飲食建議、居家保健動作，包含適合的伸展或自我放鬆技巧）`;
+（根據體質傾向與現有症狀，給予日常生活中具體可執行的養生方法、飲食建議、居家保健動作，包含適合的伸展或自我放鬆技巧）
+
+請注意：直接從第一個區塊【調理思路檢視】開始輸出，不要在最前面加任何前言、摘要或預覽列表。`;
 
   try {
     const res = await fetch('https://ai-proxy.a0985180305.workers.dev', {
@@ -1104,7 +1106,7 @@ ${historyText}
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 3000,
+        max_tokens: 6000,
         messages: [{ role: 'user', content: prompt }]
       })
     });
