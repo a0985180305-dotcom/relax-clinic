@@ -1129,24 +1129,29 @@ ${historyText}
 
     console.log('=== AI RAW TEXT ===\n', text);
 
-    // Parse 5 sections
+    // Parse 5 sections — robust split-based approach
     let reflection = '', overall = '', review = '', nextDir = '', wellness = '';
 
-    const reflectionMatch = text.match(/(?:\*{0,2}\[?調理思路檢視\]?\*{0,2})([\s\S]*?)(?=(?:\*{0,2}\[?客戶整體評估|\*{0,2}\[?本次調理回顧)|$)/);
-    const overallMatch = text.match(/(?:\*{0,2}\[?客戶整體評估與趨勢觀察\]?\*{0,2})([\s\S]*?)(?=(?:\*{0,2}\[?本次調理回顧)|$)/);
-    const reviewMatch = text.match(/(?:\*{0,2}\[?本次調理回顧與手法建議\]?\*{0,2})([\s\S]*?)(?=(?:\*{0,2}\[?下次調理方向)|$)/);
-    const nextMatch = text.match(/(?:\*{0,2}\[?下次調理方向與重點觀察\]?\*{0,2})([\s\S]*?)(?=(?:\*{0,2}\[?客人養生)|$)/);
-    const wellnessMatch = text.match(/(?:\*{0,2}\[?客人養生與居家保健建議\]?\*{0,2})([\s\S]*?)$/);
+    const KEYS = ['調理思路檢視','客戶整體評估與趨勢觀察','本次調理回顧與手法建議','下次調理方向與重點觀察','客人養生與居家保健建議'];
+    const sectionRe = new RegExp('(?:^|\\n)[^\\S\\n]*(?:#+\\s*|[-]+\\s*)?(?:\\*{0,2})\\[?(' + KEYS.map(k=>k.replace(/[\[\]]/g,'\\$&')).join('|') + ')\\]?(?:\\*{0,2})[^\\S\\n]*(?:\\n|$)', 'g');
+    const parsed = {};
+    let lastKey = null, lastIdx = 0, m;
+    while ((m = sectionRe.exec(text)) !== null) {
+      if (lastKey) parsed[lastKey] = text.slice(lastIdx, m.index).trim();
+      lastKey = m[1];
+      lastIdx = m.index + m[0].length;
+    }
+    if (lastKey) parsed[lastKey] = text.slice(lastIdx).trim();
 
-    if (reflectionMatch) reflection = reflectionMatch[1].trim();
-    if (overallMatch) overall = overallMatch[1].trim();
-    if (reviewMatch) review = reviewMatch[1].trim();
-    if (nextMatch) nextDir = nextMatch[1].trim();
-    if (wellnessMatch) wellness = wellnessMatch[1].trim();
+    reflection = parsed['調理思路檢視'] || '';
+    overall    = parsed['客戶整體評估與趨勢觀察'] || '';
+    review     = parsed['本次調理回顧與手法建議'] || '';
+    nextDir    = parsed['下次調理方向與重點觀察'] || '';
+    wellness   = parsed['客人養生與居家保健建議'] || '';
 
     // Fallback: try emoji markers
     if (!overall && !review && !nextDir && !wellness) {
-      const parts = text.split(/(?=📋|🔧|🎯|🌿|##)/);
+      const parts = text.split(/(?=📋|🔧|🎯|🌿)/);
       parts.forEach(p => {
         if (p.match(/📋|整體評估|趨勢觀察/)) overall = p.replace(/^[📋\s#]+[^\n]*\n?/, '').trim();
         else if (p.match(/🔧|本次調理回顧|手法建議/)) review = p.replace(/^[🔧\s#]+[^\n]*\n?/, '').trim();
