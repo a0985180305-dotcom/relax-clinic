@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>經絡調理｜客戶管理</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f7f5f2;
+  --surface: #ffffff;
+  --surface2: #f0ede8;
+  --border: #e2ddd8;
+  --border2: #ccc8c2;
+  --text: #1a1814;
+  --text2: #6b6660;
+  --text3: #a09b96;
+  --teal: #2d7d6f;
+  --teal-bg: #e8f5f2;
+  --teal-light: #b8ddd8;
+  --amber: #b5620d;
+  --amber-bg: #fdf3e7;
+  --red: #c0392b;
+  --red-bg: #fdf0ee;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.05);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.6; min-height: 100vh; }
+.app { max-width: 480px; margin: 0 auto; min-height: 100vh; background: var(--bg); }
+.screen { display: none; }
+.screen.active { display: block; }
+
+/* loading */
+.loading-overlay { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 999; gap: 12px; }
+.loading-overlay.hidden { display: none; }
+.spinner { width: 32px; height: 32px; border: 2.5px solid var(--border2); border-top-color: var(--teal); border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { font-size: 14px; color: var(--text3); }
+
+/* topbar */
+.topbar { display: flex; align-items: center; gap: 10px; padding: 14px 16px 12px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; }
+.topbar h1 { flex: 1; font-size: 17px; font-weight: 500; }
+.topbar-logo { font-size: 11px; color: var(--text3); letter-spacing: .5px; }
+
+/* sync indicator */
+.sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--teal); display: inline-block; margin-left: 4px; }
+.sync-dot.syncing { background: var(--amber); animation: pulse .8s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* buttons */
+.btn { display: inline-flex; align-items: center; gap: 5px; padding: 8px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border2); background: var(--surface); color: var(--text); font-size: 14px; font-family: inherit; cursor: pointer; white-space: nowrap; transition: background .15s, border-color .15s; }
+.btn:hover { background: var(--surface2); }
+.btn:active { transform: scale(.98); }
+.btn-primary { background: var(--teal); color: #fff; border-color: var(--teal); }
+.btn-primary:hover { background: #236358; border-color: #236358; }
+.btn-sm { padding: 6px 12px; font-size: 13px; }
+.btn-icon { padding: 7px 10px; }
+.btn-ghost { border-color: transparent; background: transparent; }
+.btn-ghost:hover { background: var(--surface2); border-color: var(--border); }
+
+/* list */
+.list-wrap { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.empty-state { padding: 60px 20px; text-align: center; color: var(--text3); }
+.empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+.empty-state p { font-size: 14px; }
+
+/* filter bar */
+.filter-bar { padding: 10px 16px 0; display: flex; gap: 6px; }
+.filter-chip { padding: 5px 12px; border-radius: 20px; font-size: 12px; border: 1px solid var(--border2); background: var(--surface); color: var(--text2); cursor: pointer; transition: all .12s; }
+.filter-chip.on { background: var(--teal); color: #fff; border-color: var(--teal); }
+
+.client-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; display: flex; align-items: center; gap: 12px; cursor: pointer; box-shadow: var(--shadow); transition: box-shadow .15s, border-color .15s; }
+.client-card:hover { border-color: var(--border2); box-shadow: var(--shadow-md); }
+.avatar { width: 42px; height: 42px; border-radius: 50%; background: var(--teal-bg); color: var(--teal); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 500; flex-shrink: 0; border: 1px solid var(--teal-light); }
+.avatar.glan { background: #e8f0ff; color: #3b5bdb; border-color: #b8c8f8; }
+.avatar.xuan { background: #fce8f3; color: #c2255c; border-color: #f8b8d8; }
+.client-info { flex: 1; min-width: 0; }
+.client-name { font-size: 15px; font-weight: 500; }
+.client-meta { font-size: 12px; color: var(--text3); margin-top: 2px; }
+.therapist-tag { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; margin-left: 4px; }
+.tag-glan { background: #e8f0ff; color: #3b5bdb; }
+.tag-xuan { background: #fce8f3; color: #c2255c; }
+.chevron { color: var(--text3); font-size: 16px; }
+
+/* sections */
+.section { padding: 16px 16px; }
+.section + .section { padding-top: 0; }
+.section-label { font-size: 11px; color: var(--text3); letter-spacing: .8px; text-transform: uppercase; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.divider { height: 8px; background: var(--bg); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+
+/* form */
+.field { margin-bottom: 14px; }
+.field:last-child { margin-bottom: 0; }
+.field label { display: block; font-size: 13px; color: var(--text2); margin-bottom: 5px; }
+.field input, .field textarea, .field select { width: 100%; padding: 10px 12px; border: 1px solid var(--border2); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font-size: 14px; font-family: inherit; line-height: 1.5; transition: border-color .15s, box-shadow .15s; -webkit-appearance: none; }
+.field input:focus, .field textarea:focus, .field select:focus { outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px rgba(45,125,111,.1); }
+.field textarea { resize: vertical; min-height: 72px; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* chips */
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { padding: 5px 11px; border-radius: 20px; font-size: 13px; border: 1px solid var(--border2); background: var(--surface); color: var(--text2); cursor: pointer; user-select: none; transition: all .12s; }
+.chip:hover { border-color: var(--teal); color: var(--teal); }
+.chip.on { background: var(--teal); color: #fff; border-color: var(--teal); }
+.chip.on-display { background: var(--teal-bg); color: var(--teal); border-color: var(--teal-light); pointer-events: none; font-size: 12px; }
+
+/* profile */
+.profile-header { padding: 20px 16px 16px; background: var(--surface); display: flex; align-items: center; gap: 14px; }
+.profile-avatar { width: 54px; height: 54px; border-radius: 50%; background: var(--teal-bg); color: var(--teal); display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 500; flex-shrink: 0; border: 2px solid var(--teal-light); }
+.profile-name { font-size: 19px; font-weight: 500; }
+.profile-sub { font-size: 13px; color: var(--text3); margin-top: 2px; }
+.info-table { width: 100%; border-collapse: collapse; }
+.info-table tr { border-bottom: 1px solid var(--border); }
+.info-table tr:last-child { border-bottom: none; }
+.info-table td { padding: 9px 0; font-size: 13px; vertical-align: top; }
+.info-table td:first-child { color: var(--text3); width: 96px; padding-right: 8px; }
+.caution { color: var(--red) !important; }
+.note-block { margin-bottom: 10px; }
+.note-block:last-child { margin-bottom: 0; }
+.note-label { font-size: 11px; color: var(--text3); margin-bottom: 3px; }
+.note-text { font-size: 13px; color: var(--text); line-height: 1.65; }
+
+/* session */
+.session-wrap { display: flex; flex-direction: column; gap: 10px; }
+.session-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); }
+.session-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.session-num { font-size: 12px; color: var(--text3); }
+.session-date { font-size: 14px; font-weight: 500; }
+.scores { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 12px; }
+.score-box { background: var(--surface2); border-radius: var(--radius-sm); padding: 8px 6px; text-align: center; }
+.score-lbl { font-size: 10px; color: var(--text3); }
+.score-val { font-size: 17px; font-weight: 500; margin-top: 1px; }
+.s-good { color: var(--teal); }
+.s-mid { color: var(--amber); }
+.s-bad { color: var(--red); }
+.next-box { background: var(--teal-bg); border: 1px solid var(--teal-light); border-radius: var(--radius-sm); padding: 10px 12px; margin-top: 10px; }
+.next-box .note-label { color: var(--teal); }
+.alert { background: var(--red-bg); border: 1px solid #f5c0ba; border-radius: var(--radius-sm); padding: 10px 12px; font-size: 13px; color: var(--red); margin-bottom: 14px; display: none; }
+.alert.show { display: block; }
+
+/* AI feedback */
+.ai-feedback-box { background: var(--surface); border: 1px solid var(--teal-light); border-radius: var(--radius); padding: 16px; margin-top: 12px; }
+.ai-feedback-box .ai-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.ai-badge { background: var(--teal); color: #fff; font-size: 11px; padding: 3px 8px; border-radius: 20px; font-weight: 500; }
+.ai-section { margin-bottom: 14px; }
+.ai-section:last-child { margin-bottom: 0; }
+.ai-section-title { font-size: 13px; font-weight: 500; color: var(--teal); margin-bottom: 6px; display: flex; align-items: center; gap: 5px; }
+.ai-section-body { font-size: 13px; color: var(--text); line-height: 1.75; white-space: pre-wrap; }
+.ai-loading { display: flex; align-items: center; gap: 8px; color: var(--text3); font-size: 13px; padding: 8px 0; }
+.ai-save-btn { margin-top: 12px; width: 100%; }
+
+/* login screen */
+.login-screen { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 998; padding: 24px; }
+.login-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px 24px; width: 100%; max-width: 360px; box-shadow: var(--shadow-md); }
+.login-logo { text-align: center; margin-bottom: 28px; }
+.login-logo .icon { font-size: 36px; }
+.login-logo h2 { font-size: 18px; font-weight: 500; margin-top: 8px; }
+.login-logo p { font-size: 13px; color: var(--text3); margin-top: 4px; }
+.login-error { font-size: 13px; color: var(--red); background: var(--red-bg); border: 1px solid #f5c0ba; border-radius: var(--radius-sm); padding: 9px 12px; margin-bottom: 14px; display: none; }
+.login-error:not(:empty) { display: block; }
+.login-btn-wrap { margin-top: 20px; }
+.login-btn-wrap .btn { width: 100%; justify-content: center; padding: 11px; font-size: 15px; }
+
+/* therapist selector */
+.therapist-row { display: flex; gap: 8px; }
+.therapist-btn { flex: 1; padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border2); background: var(--surface); cursor: pointer; text-align: center; font-size: 14px; font-family: inherit; transition: all .12s; }
+.therapist-btn.glan.on { background: #e8f0ff; border-color: #3b5bdb; color: #3b5bdb; font-weight: 500; }
+.therapist-btn.xuan.on { background: #fce8f3; border-color: #c2255c; color: #c2255c; font-weight: 500; }
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loading">
+  <div class="spinner"></div>
+  <div class="loading-text">連線中…</div>
+</div>
+
+<!-- 登入畫面 -->
+<div class="login-screen" id="login-screen" style="display:none;">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="icon">🌿</div>
+      <h2>經絡調理｜客戶管理</h2>
+      <p>請登入以繼續使用</p>
+    </div>
+    <div id="login-error" class="login-error"></div>
+    <div class="field">
+      <label>電子郵件</label>
+      <input id="login-email" type="email" placeholder="your@email.com" autocomplete="email">
+    </div>
+    <div class="field">
+      <label>密碼</label>
+      <input id="login-password" type="password" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <div class="login-btn-wrap">
+      <button id="login-btn" class="btn btn-primary" onclick="doLogin()">登入</button>
+    </div>
+  </div>
+</div>
+
+<div id="app-root" style="display:none;">
+<div class="app">
+
+<!-- 客戶列表 -->
+<div id="s-list" class="screen active">
+  <div class="topbar">
+    <h1>客戶管理 <span class="sync-dot" id="sync-dot"></span></h1>
+    <button id="logout-btn" class="btn btn-sm btn-ghost" style="display:none;color:var(--text3);" onclick="doLogout()">登出</button>
+    <button class="btn btn-primary btn-sm" onclick="showNewClient()">＋ 新增</button>
+  </div>
+  <div class="filter-bar">
+    <span class="filter-chip on" onclick="setFilter('all',this)">全部</span>
+    <span class="filter-chip" onclick="setFilter('glan',this)">鈞</span>
+    <span class="filter-chip" onclick="setFilter('xuan',this)">萱</span>
+  </div>
+  <div class="list-wrap" id="client-list"></div>
+</div>
+
+<!-- 新增客戶 -->
+<div id="s-new-client" class="screen">
+  <div class="topbar">
+    <button class="btn btn-icon btn-ghost" onclick="goHome()">← 返回</button>
+    <h1>新增客戶</h1>
+    <button class="btn btn-primary btn-sm" onclick="saveNewClient()">儲存</button>
+  </div>
+  <div id="nc-alert" class="alert" style="margin:12px 16px 0;">請填寫客戶姓名</div>
+  <div class="section">
+    <div class="section-label">負責調理師</div>
+    <div class="therapist-row">
+      <button class="therapist-btn glan" id="tb-glan" onclick="selectTherapist('glan')">鈞</button>
+      <button class="therapist-btn xuan" id="tb-xuan" onclick="selectTherapist('xuan')">萱</button>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="section-label">基本資料</div>
+    <div class="field"><label>姓名 *</label><input id="nc-name" placeholder="客戶姓名" autocomplete="off"></div>
+    <div class="row2">
+      <div class="field"><label>性別</label><select id="nc-gender"><option value="">—</option><option>女</option><option>男</option><option>其他</option></select></div>
+      <div class="field"><label>年齡</label><input id="nc-age" type="number" placeholder="歲" min="1" max="120"></div>
+    </div>
+    <div class="field"><label>聯絡方式</label><input id="nc-contact" placeholder="電話 / LINE"></div>
+    <div class="field"><label>職業 / 生活型態</label><input id="nc-job" placeholder="例：久坐辦公室、教師"></div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="section-label">健康背景</div>
+    <div class="field"><label>病史 / 手術史</label><textarea id="nc-history" placeholder="例：高血壓、2020年膝蓋手術…"></textarea></div>
+    <div class="field"><label>目前用藥</label><input id="nc-meds" placeholder="若無請填「無」"></div>
+    <div class="field"><label>禁忌 / 特殊注意事項</label><textarea id="nc-contra" placeholder="例：孕期、骨質疏鬆、特定部位避免施力…" style="border-color:#e8b4ae;"></textarea></div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="section-label">體質評估（初診）</div>
+    <div class="field">
+      <label>主要體質傾向</label>
+      <div class="chip-row" id="nc-constitution">
+        <span class="chip" onclick="toggleChip(this)">氣滯</span>
+        <span class="chip" onclick="toggleChip(this)">血瘀</span>
+        <span class="chip" onclick="toggleChip(this)">陽虛</span>
+        <span class="chip" onclick="toggleChip(this)">陰虛</span>
+        <span class="chip" onclick="toggleChip(this)">痰濕</span>
+        <span class="chip" onclick="toggleChip(this)">氣虛</span>
+        <span class="chip" onclick="toggleChip(this)">肝鬱</span>
+        <span class="chip" onclick="toggleChip(this)">濕熱</span>
+      </div>
+    </div>
+    <div class="field"><label>調理師初評小結</label><textarea id="nc-assessment" placeholder="整體體質判斷、主要病灶方向…"></textarea></div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="section-label">調理重點方向</div>
+    <div class="field"><label>優先處理部位 / 經絡</label><textarea id="nc-meridian" placeholder="例：膀胱經背段、肝膽經下肢段…"></textarea></div>
+    <div class="field"><label>根本調理方向</label><textarea id="nc-direction" placeholder="例：疏肝理氣為主，兼顧補腎陽…"></textarea></div>
+  </div>
+  <div style="height:20px;"></div>
+</div>
+
+<!-- 編輯客戶 -->
+<div id="s-edit-client" class="screen">
+  <div class="topbar">
+    <button class="btn btn-icon btn-ghost" onclick="showProfile(currentClientId)">← 返回</button>
+    <h1>編輯客戶資料</h1>
+    <button class="btn btn-primary btn-sm" onclick="saveEditClient()">儲存</button>
+  </div>
+  <div class="section">
+    <div class="section-label">負責調理師</div>
+    <div class="therapist-row">
+      <button class="therapist-btn glan" id="eb-glan" onclick="selectTherapist('glan')">鈞</button>
+      <button class="therapist-btn xuan" id="eb-xuan" onclick="selectTherapist('xuan')">萱</button>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="section-label">基本資料</div>
+    <div class="field"><label>姓名 *</label><input id="ec-name" placeholder="客戶姓名" autocomplete="off"></div>
+    <div class="row2">
+      <div class="field"><label>性別</label><select id="ec-gender"><option value="">—</option><option>女</option><option>男</option><option>其他</option></select></div>
+      <div class="field"><label>年齡</label><input id="ec-age" type="number" placeholder="歲"></div>
+    </div>
+    <div class="field"><label>聯絡方式</label><input id="ec-contact" placeholder="電話 / LINE"></div>
+    <div class="field"><label>職業 / 生活型態</label><input id="ec-job" placeholder="例：久坐辦公室、教師"></div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="section-label">健康背景</div>
+    <div class="field"><label>病史 / 手術史</label><textarea id="ec-history"></textarea></div>
+    <div class="field"><label>目前用藥</label><input id="ec-meds" placeholder="若無請填「無」"></div>
+    <div class="field"><label>禁忌 / 特殊注意事項</label><textarea id="ec-contra" style="border-color:#e8b4ae;"></textarea></div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="section-label">體質評估</div>
+    <div class="field"><label>主要體質傾向</label>
+      <div class="chip-row" id="ec-constitution">
+        <span class="chip" onclick="toggleChip(this)">氣滯</span><span class="chip" onclick="toggleChip(this)">血瘀</span><span class="chip" onclick="toggleChip(this)">陽虛</span><span class="chip" onclick="toggleChip(this)">陰虛</span><span class="chip" onclick="toggleChip(this)">痰濕</span><span class="chip" onclick="toggleChip(this)">氣虛</span><span class="chip" onclick="toggleChip(this)">肝鬱</span><span class="chip" onclick="toggleChip(this)">濕熱</span>
+      </div>
+    </div>
+    <div class="field"><label>調理師初評小結</label><textarea id="ec-assessment"></textarea></div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="section-label">調理重點方向</div>
+    <div class="field"><label>優先處理部位 / 經絡</label><textarea id="ec-meridian"></textarea></div>
+    <div class="field"><label>根本調理方向</label><textarea id="ec-direction"></textarea></div>
+  </div>
+  <div style="height:20px;"></div>
+</div>
+
+<!-- 編輯調理紀錄 -->
+<div id="s-edit-session" class="screen">
+  <div class="topbar">
+    <button class="btn btn-icon btn-ghost" onclick="showProfile(currentClientId)">← 返回</button>
+    <h1>編輯調理紀錄</h1>
+    <button class="btn btn-primary btn-sm" onclick="saveEditSession()">儲存</button>
+  </div>
+  <div class="section">
+    <div class="section-label">本次調理師</div>
+    <div class="therapist-row">
+      <button class="therapist-btn glan" id="esb-glan" onclick="selectEditSessionTherapist('glan')">鈞</button>
+      <button class="therapist-btn xuan" id="esb-xuan" onclick="selectEditSessionTherapist('xuan')">萱</button>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="section-label">調理日期</div>
+    <div class="field"><label>日期</label><input id="es-date" type="date"></div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="section-label">上次回報</div>
+    <div class="field"><label>客戶反映</label><textarea id="es-feedback"></textarea></div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="section-label">調理前評估</div>
+    <div class="field"><label>今日主訴</label><textarea id="es-complaint"></textarea></div>
+    <div class="row2">
+      <div class="field"><label>疼痛感（前）0–10</label><input id="es-pb" type="number" min="0" max="10" placeholder="分"></div>
+      <div class="field"><label>緊繃感（前）0–10</label><input id="es-tb" type="number" min="0" max="10" placeholder="分"></div>
+    </div>
+    <div class="field"><label>舌象觀察</label><input id="es-tongue"></div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="section-label">本次施作</div>
+    <div class="field"><label>操作部位 / 經絡</label><textarea id="es-areas"></textarea></div>
+    <div class="field"><label>使用手法</label>
+      <div class="chip-row" id="es-techniques">
+        <span class="chip" onclick="toggleChip(this)">撥筋</span><span class="chip" onclick="toggleChip(this)">推拿</span><span class="chip" onclick="toggleChip(this)">熱敷</span><span class="chip" onclick="toggleChip(this)">拍打</span><span class="chip" onclick="toggleChip(this)">拔罐</span><span class="chip" onclick="toggleChip(this)">刮痧</span><span class="chip" onclick="toggleChip(this)">精油</span>
+      </div>
+    </div>
+    <div class="field"><label>特別發現</label><textarea id="es-findings"></textarea></div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="section-label">調理後評估</div>
+    <div class="row2">
+      <div class="field"><label>疼痛感（後）0–10</label><input id="es-pa" type="number" min="0" max="10" placeholder="分"></div>
+      <div class="field"><label>緊繃感（後）0–10</label><input id="es-ta" type="number" min="0" max="10" placeholder="分"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>睡眠品質 1–5</label><input id="es-sleep" type="number" min="1" max="5" placeholder="分"></div>
+      <div class="field"><label>精神狀態 1–5</label><input id="es-energy" type="number" min="1" max="5" placeholder="分"></div>
+    </div>
+    <div class="field"><label>客戶即時感受</label><textarea id="es-response"></textarea></div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="section-label">下次提醒</div>
+    <div class="field"><label>居家保養建議</label><textarea id="es-homecare"></textarea></div>
+    <div class="field"><label>下次調理重點</label><textarea id="es-next"></textarea></div>
+  </div>
+  <div style="height:20px;"></div>
+</div>
+
+<!-- 客戶頁面 -->
+<div id="s-profile" class="screen">
+  <div class="topbar">
+    <button class="btn btn-icon btn-ghost" onclick="goHome()">← 返回</button>
+    <h1 id="profile-title"></h1>
+    <div style="display:flex;gap:6px;">
+      <button class="btn btn-sm btn-ghost" onclick="showEditClient()">編輯</button>
+      <button class="btn btn-sm btn-ghost" style="color:var(--red)" onclick="deleteClient()">刪除</button>
+    </div>
+  </div>
+  <div id="profile-content"></div>
+  <div class="section">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <div class="section-label" style="margin:0; border:none; padding:0;">調理紀錄</div>
+      <button class="btn btn-sm" onclick="showNewSession()">＋ 新增一筆</button>
+    </div>
+    <div id="session-list" class="session-wrap"></div>
+    <div id="ai-test-result" style="display:none;margin-top:10px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;word-break:break-all;"></div>
+    <button class="btn btn-sm btn-ghost" style="margin-top:8px;font-size:12px;" onclick="testWorker()">🔧 測試 AI 連線</button>
+    <div style="height:12px;"></div>
+  </div>
+</div>
+
+<!-- 新增調理紀錄 -->
+<div id="s-new-session" class="screen">
+  <div class="topbar">
+    <button class="btn btn-icon btn-ghost" onclick="showProfile(currentClientId)">← 返回</button>
+    <h1>新增調理紀錄</h1>
+    <button class="btn btn-primary btn-sm" onclick="saveSession()">儲存</button>
+  </div>
+  <div class="section">
+    <div class="section-label">本次調理師</div>
+    <div class="therapist-row">
+      <button class="therapist-btn glan" id="sb-glan" onclick="selectSessionTherapist('glan')">鈞</button>
+      <button class="therapist-btn xuan" id="sb-xuan" onclick="selectSessionTherapist('xuan')">萱</button>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="section-label">調理日期</div>
+    <div class="field"><label>日期（預設今天，可修改）</label><input id="ns-date" type="date"></div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="section-label">上次回報</div>
+    <div class="field"><label>客戶反映（上次調理後的變化）</label><textarea id="ns-feedback" placeholder="例：背部輕鬆許多、睡眠改善…"></textarea></div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="section-label">調理前評估</div>
+    <div class="field"><label>今日主訴</label><textarea id="ns-complaint" placeholder="今天最不舒服的部位 / 當下身體狀態…"></textarea></div>
+    <div class="row2">
+      <div class="field"><label>疼痛感（前）0–10</label><input id="ns-pb" type="number" min="0" max="10" placeholder="分"></div>
+      <div class="field"><label>緊繃感（前）0–10</label><input id="ns-tb" type="number" min="0" max="10" placeholder="分"></div>
+    </div>
+    <div class="field"><label>舌象觀察</label><input id="ns-tongue" placeholder="例：舌淡紅、苔薄白微膩…"></div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="section-label">本次施作</div>
+    <div class="field"><label>操作部位 / 經絡</label><textarea id="ns-areas" placeholder="例：膀胱經全段、肩頸斜方肌…"></textarea></div>
+    <div class="field">
+      <label>使用手法</label>
+      <div class="chip-row" id="ns-techniques">
+        <span class="chip" onclick="toggleChip(this)">撥筋</span>
+        <span class="chip" onclick="toggleChip(this)">推拿</span>
+        <span class="chip" onclick="toggleChip(this)">熱敷</span>
+        <span class="chip" onclick="toggleChip(this)">拍打</span>
+        <span class="chip" onclick="toggleChip(this)">拔罐</span>
+        <span class="chip" onclick="toggleChip(this)">刮痧</span>
+        <span class="chip" onclick="toggleChip(this)">精油</span>
+      </div>
+    </div>
+    <div class="field"><label>特別發現</label><textarea id="ns-findings" placeholder="例：L3附近有明顯結節…"></textarea></div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="section-label">調理後評估</div>
+    <div class="row2">
+      <div class="field"><label>疼痛感（後）0–10</label><input id="ns-pa" type="number" min="0" max="10" placeholder="分"></div>
+      <div class="field"><label>緊繃感（後）0–10</label><input id="ns-ta" type="number" min="0" max="10" placeholder="分"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>睡眠品質 1–5</label><input id="ns-sleep" type="number" min="1" max="5" placeholder="分"></div>
+      <div class="field"><label>精神狀態 1–5</label><input id="ns-energy" type="number" min="1" max="5" placeholder="分"></div>
+    </div>
+    <div class="field"><label>客戶即時感受</label><textarea id="ns-response" placeholder="例：腰部明顯輕鬆、微痠感…"></textarea></div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="section-label">下次提醒</div>
+    <div class="field"><label>居家保養建議</label><textarea id="ns-homecare" placeholder="例：每日熱敷腰部15分鐘、避免久坐…"></textarea></div>
+    <div class="field"><label>下次調理重點</label><textarea id="ns-next" placeholder="例：加強下焦循環、增加肝經段施作…"></textarea></div>
+  </div>
+  <div style="height:20px;"></div>
+</div>
+
+</div>
+</div><!-- /app-root -->
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
+import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBFYE5FydT4oJJVucSb31oYe_53PNd0en4",
+  authDomain: "relax-clinic.firebaseapp.com",
+  projectId: "relax-clinic",
+  storageBucket: "relax-clinic.firebasestorage.app",
+  messagingSenderId: "414286502214",
+  appId: "1:414286502214:web:8c8583804b144381d36d47"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+let clients = [];
+let currentClientId = null;
+let currentTherapist = 'glan';
+let currentSessionTherapist = 'glan';
+let currentFilter = 'all';
+
+const syncDot = document.getElementById('sync-dot');
+function setSyncing(v) { syncDot.className = 'sync-dot' + (v ? ' syncing' : ''); }
+
+// Auth: login
+window.doLogin = async () => {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  const btn = document.getElementById('login-btn');
+  errEl.textContent = '';
+  btn.disabled = true;
+  btn.textContent = '登入中…';
+  try {
+    await signInWithEmailAndPassword(auth, email, password);
+  } catch(e) {
+    const msgs = {
+      'auth/invalid-credential': '帳號或密碼錯誤',
+      'auth/user-not-found': '找不到此帳號',
+      'auth/wrong-password': '密碼錯誤',
+      'auth/invalid-email': 'Email 格式不正確',
+      'auth/too-many-requests': '嘗試次數過多，請稍後再試',
+    };
+    errEl.textContent = msgs[e.code] || '登入失敗：' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '登入';
+  }
+};
+
+window.doLogout = async () => {
+  if (!confirm('確定要登出？')) return;
+  await signOut(auth);
+};
+
+// Allow Enter key to submit login
+document.getElementById('login-password').addEventListener('keydown', e => {
+  if (e.key === 'Enter') window.doLogin();
+});
+document.getElementById('login-email').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('login-password').focus();
+});
+
+let unsubscribeSnapshot = null;
+
+// Auth state handler
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    // Logged in — show app
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app-root').style.display = 'block';
+    document.getElementById('logout-btn').style.display = '';
+
+    // Start real-time listener
+    if (unsubscribeSnapshot) unsubscribeSnapshot();
+    unsubscribeSnapshot = onSnapshot(collection(db, 'clients'), (snapshot) => {
+      clients = [];
+      snapshot.forEach(d => clients.push({ id: d.id, ...d.data() }));
+      clients.sort((a,b) => (a.name||'').localeCompare(b.name||'', 'zh-TW'));
+      document.getElementById('loading').classList.add('hidden');
+      renderList();
+      if (currentClientId) {
+        const c = clients.find(x => x.id === currentClientId);
+        if (c) renderSessions(c);
+      }
+    }, (err) => {
+      document.getElementById('loading').classList.add('hidden');
+      console.error(err);
+    });
+  } else {
+    // Not logged in — show login screen
+    if (unsubscribeSnapshot) { unsubscribeSnapshot(); unsubscribeSnapshot = null; }
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('login-screen').style.display = 'flex';
+    document.getElementById('app-root').style.display = 'none';
+    document.getElementById('logout-btn').style.display = 'none';
+  }
+});
+
+function show(id, pushState=true) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0,0);
+  if (pushState) history.pushState({ screen: id, clientId: currentClientId }, '');
+}
+
+window.addEventListener('popstate', (e) => {
+  const state = e.state;
+  if (!state) { renderList(); document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); document.getElementById('s-list').classList.add('active'); return; }
+  if (state.screen === 's-list') { renderList(); document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); document.getElementById('s-list').classList.add('active'); }
+  else if (state.screen === 's-profile' && state.clientId) { currentClientId = state.clientId; const c = clients.find(x=>x.id===state.clientId); if(c) { document.getElementById('profile-title').textContent=c.name; const tag=c.therapist==='glan'?'<span class="therapist-tag tag-glan">鈞</span>':c.therapist==='xuan'?'<span class="therapist-tag tag-xuan">萱</span>':''; const avStyle=c.therapist==='glan'?'background:#e8f0ff;color:#3b5bdb;border-color:#b8c8f8':c.therapist==='xuan'?'background:#fce8f3;color:#c2255c;border-color:#f8b8d8':''; document.getElementById('profile-content').innerHTML=`<div class="profile-header"><div class="profile-avatar" style="${avStyle}">${initials(c.name)}</div><div><div class="profile-name">${c.name}${tag}</div><div class="profile-sub">${c.gender||''}${c.age?' · '+c.age+'歲':''}${c.job?' · '+c.job:''}</div></div></div>`; renderSessions(c); } document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); document.getElementById('s-profile').classList.add('active'); }
+  else if (state.screen === 's-new-client') { document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); document.getElementById('s-new-client').classList.add('active'); }
+  else if (state.screen === 's-new-session') { document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); document.getElementById('s-new-session').classList.add('active'); }
+});
+
+window.goHome = () => { renderList(); show('s-list'); };
+
+window.setFilter = (f, el) => {
+  currentFilter = f;
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('on'));
+  el.classList.add('on');
+  renderList();
+};
+
+window.toggleChip = (el) => el.classList.toggle('on');
+
+function getChips(id) {
+  return Array.from(document.querySelectorAll('#'+id+' .chip.on')).map(c=>c.textContent).join('、');
+}
+function clearChips(id) {
+  document.querySelectorAll('#'+id+' .chip').forEach(c=>c.classList.remove('on'));
+}
+function initials(name) { return name ? name.slice(0,1) : '?'; }
+function fmt(iso) {
+  const d = new Date(iso);
+  return d.getFullYear()+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+String(d.getDate()).padStart(2,'0');
+}
+
+function renderList() {
+  const el = document.getElementById('client-list');
+  let filtered = currentFilter === 'all' ? clients : clients.filter(c => c.therapist === currentFilter);
+  if (!filtered.length) {
+    el.innerHTML = '<div class="empty-state"><div class="icon">🌿</div><p>尚無客戶紀錄</p></div>';
+    return;
+  }
+  el.innerHTML = filtered.map(c => {
+    const cnt = c.sessions ? c.sessions.length : 0;
+    const last = cnt ? '最近：'+fmt(c.sessions[cnt-1].date) : '尚無調理紀錄';
+    const tag = c.therapist === 'glan' ? '<span class="therapist-tag tag-glan">鈞</span>' : c.therapist === 'xuan' ? '<span class="therapist-tag tag-xuan">萱</span>' : '';
+    const avClass = c.therapist === 'glan' ? 'avatar glan' : c.therapist === 'xuan' ? 'avatar xuan' : 'avatar';
+    return `<div class="client-card" onclick="showProfile('${c.id}')">
+      <div class="${avClass}">${initials(c.name)}</div>
+      <div class="client-info">
+        <div class="client-name">${c.name}${tag}</div>
+        <div class="client-meta">${c.age?c.age+'歲　':''}共 ${cnt} 次　${last}</div>
+      </div>
+      <span class="chevron">›</span>
+    </div>`;
+  }).join('');
+}
+
+window.selectTherapist = (t) => {
+  currentTherapist = t;
+  ['tb-glan','eb-glan'].forEach(id => { const el=document.getElementById(id); if(el) el.classList.toggle('on', t==='glan'); });
+  ['tb-xuan','eb-xuan'].forEach(id => { const el=document.getElementById(id); if(el) el.classList.toggle('on', t==='xuan'); });
+};
+window.selectSessionTherapist = (t) => {
+  currentSessionTherapist = t;
+  document.getElementById('sb-glan').classList.toggle('on', t==='glan');
+  document.getElementById('sb-xuan').classList.toggle('on', t==='xuan');
+};
+
+window.showNewClient = () => {
+  ['nc-name','nc-contact','nc-age','nc-job','nc-history','nc-meds','nc-contra','nc-assessment','nc-meridian','nc-direction'].forEach(id => document.getElementById(id).value='');
+  document.getElementById('nc-gender').value='';
+  clearChips('nc-constitution');
+  document.getElementById('nc-alert').classList.remove('show');
+  selectTherapist('glan');
+  show('s-new-client');
+};
+
+window.saveNewClient = async () => {
+  const name = document.getElementById('nc-name').value.trim();
+  if (!name) { document.getElementById('nc-alert').classList.add('show'); return; }
+  document.getElementById('nc-alert').classList.remove('show');
+  setSyncing(true);
+  try {
+    await addDoc(collection(db,'clients'), {
+      name, therapist: currentTherapist,
+      gender: document.getElementById('nc-gender').value,
+      age: document.getElementById('nc-age').value,
+      contact: document.getElementById('nc-contact').value,
+      job: document.getElementById('nc-job').value,
+      history: document.getElementById('nc-history').value,
+      meds: document.getElementById('nc-meds').value,
+      contra: document.getElementById('nc-contra').value,
+      constitution: getChips('nc-constitution'),
+      assessment: document.getElementById('nc-assessment').value,
+      meridian: document.getElementById('nc-meridian').value,
+      direction: document.getElementById('nc-direction').value,
+      sessions: [],
+      createdAt: new Date().toISOString()
+    });
+  } finally { setSyncing(false); }
+  goHome();
+};
+
+window.deleteClient = async () => {
+  const c = clients.find(x=>x.id===currentClientId);
+  if (!c || !confirm('確定刪除「'+c.name+'」及其所有紀錄？')) return;
+  setSyncing(true);
+  try { await deleteDoc(doc(db,'clients',currentClientId)); } finally { setSyncing(false); }
+  goHome();
+};
+
+window.showProfile = (id) => {
+  currentClientId = id;
+  const c = clients.find(x=>x.id===id);
+  if (!c) return;
+  document.getElementById('profile-title').textContent = c.name;
+  const tag = c.therapist==='glan'?'<span class="therapist-tag tag-glan">鈞</span>':c.therapist==='xuan'?'<span class="therapist-tag tag-xuan">萱</span>':'';
+  const avStyle = c.therapist==='glan'?'background:#e8f0ff;color:#3b5bdb;border-color:#b8c8f8':c.therapist==='xuan'?'background:#fce8f3;color:#c2255c;border-color:#f8b8d8':'';
+  let html = `<div class="profile-header">
+    <div class="profile-avatar" style="${avStyle}">${initials(c.name)}</div>
+    <div><div class="profile-name">${c.name}${tag}</div>
+    <div class="profile-sub">${c.gender||''}${c.age?' · '+c.age+'歲':''}${c.job?' · '+c.job:''}</div></div>
+  </div><div class="divider"></div>
+  <div class="section"><div class="section-label">基本資料</div>
+  <table class="info-table">
+  ${c.contact?`<tr><td>聯絡方式</td><td>${c.contact}</td></tr>`:''}
+  ${c.history?`<tr><td>病史</td><td>${c.history}</td></tr>`:''}
+  ${c.meds?`<tr><td>用藥</td><td>${c.meds}</td></tr>`:''}
+  ${c.contra?`<tr><td>禁忌注意</td><td class="caution">⚠ ${c.contra}</td></tr>`:''}
+  </table></div><div class="divider"></div>
+  <div class="section"><div class="section-label">體質與調理方向</div>
+  ${c.constitution?`<div class="note-block"><div class="note-label">體質傾向</div><div class="chip-row">${c.constitution.split('、').filter(Boolean).map(t=>`<span class="chip on-display">${t}</span>`).join('')}</div></div>`:''}
+  ${c.assessment?`<div class="note-block"><div class="note-label">調理師初評小結</div><div class="note-text">${c.assessment}</div></div>`:''}
+  ${c.meridian?`<div class="note-block"><div class="note-label">優先部位 / 經絡</div><div class="note-text">${c.meridian}</div></div>`:''}
+  ${c.direction?`<div class="note-block"><div class="note-label">根本調理方向</div><div class="note-text">${c.direction}</div></div>`:''}
+  </div><div class="divider"></div>`;
+  document.getElementById('profile-content').innerHTML = html;
+  renderSessions(c);
+  show('s-profile');
+};
+
+function renderSessions(c) {
+  const el = document.getElementById('session-list');
+  const sessions = c.sessions || [];
+  if (!sessions.length) { el.innerHTML='<div style="text-align:center;padding:30px 0;color:var(--text3);font-size:14px;">尚無調理紀錄，點上方「新增一筆」</div>'; return; }
+  function sc(v,max,inv){const r=v/max;return inv?(r>=.7?'s-good':r>=.4?'s-mid':'s-bad'):(r<=.3?'s-good':r<=.6?'s-mid':'s-bad');}
+  el.innerHTML = sessions.slice().reverse().map((s,ri)=>{
+    const i = sessions.length-1-ri;
+    const pb = s.pb!==''&&s.pb!==undefined?parseInt(s.pb):null;
+    const pa = s.pa!==''&&s.pa!==undefined?parseInt(s.pa):null;
+    const sl = s.sleep?parseInt(s.sleep):null;
+    const en = s.energy?parseInt(s.energy):null;
+    const stag = s.therapist==='glan'?'<span class="therapist-tag tag-glan">鈞</span>':s.therapist==='xuan'?'<span class="therapist-tag tag-xuan">萱</span>':'';
+    const scoreHtml = (pb!==null||pa!==null||sl!==null||en!==null)?`<div class="scores">
+      ${pb!==null?`<div class="score-box"><div class="score-lbl">疼痛前</div><div class="score-val ${sc(pb,10,false)}">${pb}</div></div>`:''}
+      ${pa!==null?`<div class="score-box"><div class="score-lbl">疼痛後</div><div class="score-val ${sc(pa,10,false)}">${pa}</div></div>`:''}
+      ${sl!==null?`<div class="score-box"><div class="score-lbl">睡眠</div><div class="score-val ${sc(sl,5,true)}">${sl}</div></div>`:''}
+      ${en!==null?`<div class="score-box"><div class="score-lbl">精神</div><div class="score-val ${sc(en,5,true)}">${en}</div></div>`:''}
+    </div>`:'';
+    return `<div class="session-card">
+      <div class="session-head">
+        <div><div class="session-num">第 ${i+1} 次${stag}</div><div class="session-date">${fmt(s.date)}</div></div>
+        <div style="display:flex;gap:4px;">
+          <button class="btn btn-sm btn-ghost" onclick="editSession(${i})">編輯</button>
+          <button class="btn btn-sm btn-ghost" style="color:var(--red)" onclick="delSession(${i})">刪除</button>
+        </div>
+      </div>
+      ${scoreHtml}
+      ${s.feedback?`<div class="note-block"><div class="note-label">上次回報</div><div class="note-text">${s.feedback}</div></div>`:''}
+      ${s.complaint?`<div class="note-block"><div class="note-label">今日主訴</div><div class="note-text">${s.complaint}</div></div>`:''}
+      ${s.tongue?`<div class="note-block"><div class="note-label">舌象</div><div class="note-text">${s.tongue}</div></div>`:''}
+      ${s.areas?`<div class="note-block"><div class="note-label">操作部位</div><div class="note-text">${s.areas}</div></div>`:''}
+      ${s.techniques?`<div class="note-block"><div class="note-label">手法</div><div class="chip-row">${s.techniques.split('、').filter(Boolean).map(t=>`<span class="chip on-display">${t}</span>`).join('')}</div></div>`:''}
+      ${s.findings?`<div class="note-block"><div class="note-label">特別發現</div><div class="note-text">${s.findings}</div></div>`:''}
+      ${s.response?`<div class="note-block"><div class="note-label">即時感受</div><div class="note-text">${s.response}</div></div>`:''}
+      ${(s.homecare||s.next)?`<div class="next-box">
+        ${s.homecare?`<div class="note-block"><div class="note-label">居家保養建議</div><div class="note-text">${s.homecare}</div></div>`:''}
+        ${s.next?`<div class="note-block" style="margin-bottom:0"><div class="note-label">下次調理重點</div><div class="note-text">${s.next}</div></div>`:''}
+      </div>`:''}
+      ${s.aiFeedback ? `<div class="ai-feedback-box">
+        <div class="ai-header"><span class="ai-badge">AI 專家回饋</span><button class="btn btn-sm btn-ghost" style="margin-left:auto;font-size:11px;" onclick="regenAiFeedback(${i})">重新產生</button></div>
+        ${s.aiFeedback.overall?`<div class="ai-section"><div class="ai-section-title">📋 客戶整體評估與趨勢觀察</div><div class="ai-section-body">${s.aiFeedback.overall}</div></div>`:''}
+        ${s.aiFeedback.review?`<div class="ai-section"><div class="ai-section-title">🔧 本次調理回顧與手法建議</div><div class="ai-section-body">${s.aiFeedback.review}</div></div>`:''}
+        ${s.aiFeedback.next?`<div class="ai-section"><div class="ai-section-title">🎯 下次調理方向與重點觀察</div><div class="ai-section-body">${s.aiFeedback.next}</div></div>`:''}
+        ${s.aiFeedback.wellness?`<div class="ai-section"><div class="ai-section-title">🌿 客人養生與居家保健建議</div><div class="ai-section-body">${s.aiFeedback.wellness}</div></div>`:''}
+      </div>` : `<button class="btn btn-sm" style="margin-top:10px;width:100%" onclick="getAiFeedback(${i})">✨ 取得 AI 專家回饋</button>`}
+    </div>`;
+  }).join('');
+}
+
+window.delSession = async (idx) => {
+  if (!confirm('確定刪除這筆調理紀錄？')) return;
+  const c = clients.find(x=>x.id===currentClientId);
+  if (!c) return;
+  const sessions = [...(c.sessions||[])];
+  sessions.splice(idx,1);
+  setSyncing(true);
+  try { await updateDoc(doc(db,'clients',currentClientId),{sessions}); } finally { setSyncing(false); }
+};
+
+window.showNewSession = () => {
+  ['ns-feedback','ns-complaint','ns-pb','ns-tb','ns-tongue','ns-areas','ns-findings','ns-pa','ns-ta','ns-sleep','ns-energy','ns-response','ns-homecare','ns-next'].forEach(id=>document.getElementById(id).value='');
+  clearChips('ns-techniques');
+  // Set today's date as default
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth()+1).padStart(2,'0');
+  const dd = String(today.getDate()).padStart(2,'0');
+  document.getElementById('ns-date').value = `${yyyy}-${mm}-${dd}`;
+  const c = clients.find(x=>x.id===currentClientId);
+  selectSessionTherapist(c?.therapist||'glan');
+  show('s-new-session');
+};
+
+window.saveSession = async () => {
+  const c = clients.find(x=>x.id===currentClientId);
+  if (!c) return;
+  const sessions = [...(c.sessions||[])];
+  const selectedDate = document.getElementById('ns-date').value;
+  const dateIso = selectedDate ? new Date(selectedDate + 'T12:00:00').toISOString() : new Date().toISOString();
+  sessions.push({
+    date: dateIso,
+    therapist: currentSessionTherapist,
+    feedback: document.getElementById('ns-feedback').value,
+    complaint: document.getElementById('ns-complaint').value,
+    pb: document.getElementById('ns-pb').value,
+    tb: document.getElementById('ns-tb').value,
+    tongue: document.getElementById('ns-tongue').value,
+    areas: document.getElementById('ns-areas').value,
+    techniques: getChips('ns-techniques'),
+    findings: document.getElementById('ns-findings').value,
+    pa: document.getElementById('ns-pa').value,
+    ta: document.getElementById('ns-ta').value,
+    sleep: document.getElementById('ns-sleep').value,
+    energy: document.getElementById('ns-energy').value,
+    response: document.getElementById('ns-response').value,
+    homecare: document.getElementById('ns-homecare').value,
+    next: document.getElementById('ns-next').value
+  });
+  setSyncing(true);
+  try { await updateDoc(doc(db,'clients',currentClientId),{sessions}); } finally { setSyncing(false); }
+  showProfile(currentClientId);
+};
+let currentEditSessionIdx = null;
+let currentEditSessionTherapist = 'glan';
+
+window.selectEditSessionTherapist = (t) => {
+  currentEditSessionTherapist = t;
+  document.getElementById('esb-glan').classList.toggle('on', t==='glan');
+  document.getElementById('esb-xuan').classList.toggle('on', t==='xuan');
+};
+
+window.showEditClient = () => {
+  const c = clients.find(x=>x.id===currentClientId);
+  if (!c) return;
+  document.getElementById('ec-name').value = c.name||'';
+  document.getElementById('ec-gender').value = c.gender||'';
+  document.getElementById('ec-age').value = c.age||'';
+  document.getElementById('ec-contact').value = c.contact||'';
+  document.getElementById('ec-job').value = c.job||'';
+  document.getElementById('ec-history').value = c.history||'';
+  document.getElementById('ec-meds').value = c.meds||'';
+  document.getElementById('ec-contra').value = c.contra||'';
+  document.getElementById('ec-assessment').value = c.assessment||'';
+  document.getElementById('ec-meridian').value = c.meridian||'';
+  document.getElementById('ec-direction').value = c.direction||'';
+  clearChips('ec-constitution');
+  if (c.constitution) {
+    c.constitution.split('、').filter(Boolean).forEach(t => {
+      document.querySelectorAll('#ec-constitution .chip').forEach(chip => {
+        if (chip.textContent === t) chip.classList.add('on');
+      });
+    });
+  }
+  // sync therapist buttons
+  currentTherapist = c.therapist||'glan';
+  document.getElementById('eb-glan').classList.toggle('on', currentTherapist==='glan');
+  document.getElementById('eb-xuan').classList.toggle('on', currentTherapist==='xuan');
+  // override selectTherapist to also update eb buttons
+  show('s-edit-client');
+};
+
+window.saveEditClient = async () => {
+  const name = document.getElementById('ec-name').value.trim();
+  if (!name) { alert('請填寫客戶姓名'); return; }
+  setSyncing(true);
+  try {
+    await updateDoc(doc(db,'clients',currentClientId), {
+      name, therapist: currentTherapist,
+      gender: document.getElementById('ec-gender').value,
+      age: document.getElementById('ec-age').value,
+      contact: document.getElementById('ec-contact').value,
+      job: document.getElementById('ec-job').value,
+      history: document.getElementById('ec-history').value,
+      meds: document.getElementById('ec-meds').value,
+      contra: document.getElementById('ec-contra').value,
+      constitution: getChips('ec-constitution'),
+      assessment: document.getElementById('ec-assessment').value,
+      meridian: document.getElementById('ec-meridian').value,
+      direction: document.getElementById('ec-direction').value,
+    });
+  } finally { setSyncing(false); }
+  showProfile(currentClientId);
+};
+
+window.editSession = (idx) => {
+  const c = clients.find(x=>x.id===currentClientId);
+  if (!c) return;
+  const s = c.sessions[idx];
+  currentEditSessionIdx = idx;
+  document.getElementById('es-feedback').value = s.feedback||'';
+  document.getElementById('es-complaint').value = s.complaint||'';
+  document.getElementById('es-pb').value = s.pb||'';
+  document.getElementById('es-tb').value = s.tb||'';
+  document.getElementById('es-tongue').value = s.tongue||'';
+  document.getElementById('es-areas').value = s.areas||'';
+  document.getElementById('es-findings').value = s.findings||'';
+  document.getElementById('es-pa').value = s.pa||'';
+  document.getElementById('es-ta').value = s.ta||'';
+  document.getElementById('es-sleep').value = s.sleep||'';
+  document.getElementById('es-energy').value = s.energy||'';
+  document.getElementById('es-response').value = s.response||'';
+  document.getElementById('es-homecare').value = s.homecare||'';
+  document.getElementById('es-next').value = s.next||'';
+  // Set date
+  if (s.date) {
+    const d = new Date(s.date);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    document.getElementById('es-date').value = `${yyyy}-${mm}-${dd}`;
+  }
+  clearChips('es-techniques');
+  if (s.techniques) {
+    s.techniques.split('、').filter(Boolean).forEach(t => {
+      document.querySelectorAll('#es-techniques .chip').forEach(chip => {
+        if (chip.textContent === t) chip.classList.add('on');
+      });
+    });
+  }
+  selectEditSessionTherapist(s.therapist||'glan');
+  show('s-edit-session');
+};
+
+window.saveEditSession = async () => {
+  const c = clients.find(x=>x.id===currentClientId);
+  if (!c || currentEditSessionIdx === null) return;
+  const sessions = [...(c.sessions||[])];
+  const editSelectedDate = document.getElementById('es-date').value;
+  const editDateIso = editSelectedDate ? new Date(editSelectedDate + 'T12:00:00').toISOString() : sessions[currentEditSessionIdx].date;
+  sessions[currentEditSessionIdx] = {
+    ...sessions[currentEditSessionIdx],
+    date: editDateIso,
+    therapist: currentEditSessionTherapist,
+    feedback: document.getElementById('es-feedback').value,
+    complaint: document.getElementById('es-complaint').value,
+    pb: document.getElementById('es-pb').value,
+    tb: document.getElementById('es-tb').value,
+    tongue: document.getElementById('es-tongue').value,
+    areas: document.getElementById('es-areas').value,
+    techniques: getChips('es-techniques'),
+    findings: document.getElementById('es-findings').value,
+    pa: document.getElementById('es-pa').value,
+    ta: document.getElementById('es-ta').value,
+    sleep: document.getElementById('es-sleep').value,
+    energy: document.getElementById('es-energy').value,
+    response: document.getElementById('es-response').value,
+    homecare: document.getElementById('es-homecare').value,
+    next: document.getElementById('es-next').value,
+  };
+  setSyncing(true);
+  try { await updateDoc(doc(db,'clients',currentClientId),{sessions}); } finally { setSyncing(false); }
+  showProfile(currentClientId);
+};
+window.testWorker = async () => {
+  const el = document.getElementById('ai-test-result');
+  el.style.display = 'block';
+  el.textContent = '測試中...';
+  try {
+    const res = await fetch('https://ai-proxy.a0985180305.workers.dev', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 50,
+        messages: [{ role: 'user', content: '請說「連線成功」三個字' }]
+      })
+    });
+    const data = await res.json();
+    el.style.color = 'var(--teal)';
+    el.textContent = '回應：' + JSON.stringify(data).slice(0, 300);
+  } catch(e) {
+    el.style.color = 'var(--red)';
+    el.textContent = '錯誤：' + e.message;
+  }
+};
+
+window.regenAiFeedback = async (idx) => {
+  const c = clients.find(x=>x.id===currentClientId);
+  if (!c) return;
+  const sessions = [...(c.sessions||[])];
+  sessions[idx] = { ...sessions[idx], aiFeedback: null };
+  setSyncing(true);
+  try { await updateDoc(doc(db,'clients',currentClientId),{sessions}); } finally { setSyncing(false); }
+  await getAiFeedback(idx);
+};
+
+window.getAiFeedback = async (idx) => {
+  const c = clients.find(x=>x.id===currentClientId);
+  if (!c) return;
+  const s = c.sessions[idx];
+
+  // Show loading state
+  const cards = document.querySelectorAll('.session-card');
+  const reversedIdx = c.sessions.length - 1 - idx;
+  const card = cards[reversedIdx];
+  const btn = card ? card.querySelector('button[onclick*="getAiFeedback"]') : null;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></span>AI 分析中…'; }
+
+  const allSessions = c.sessions || [];
+  const historyText = allSessions.length > 1 ? allSessions.slice(0, -1).map((hs, hi) => `
+第 ${hi+1} 次（${fmt(hs.date)}）調理師：${hs.therapist==='glan'?'鈞':'萱'}
+- 主訴：${hs.complaint||'未填'}
+- 操作：${hs.areas||'未填'} ／ 手法：${hs.techniques||'未填'}
+- 疼痛 ${hs.pb||'—'}→${hs.pa||'—'} ／ 睡眠：${hs.sleep||'—'} ／ 精神：${hs.energy||'—'}
+- 特別發現：${hs.findings||'無'}
+- 即時感受：${hs.response||'無'}
+- 居家建議：${hs.homecare||'無'}`).join('\n') : '（本次為初次調理）';
+
+  const prompt = `你是一位擁有20年豐富實務與深厚理論知識的資深中醫師、經絡調理師與物理治療師。
+請根據以下客戶的完整資料與所有調理紀錄，給予這位調理師專業且具體的回饋與建議。
+
+═══════════════════════
+【客戶個人檔案】
+═══════════════════════
+姓名：${c.name}　性別：${c.gender||'未填'}　年齡：${c.age||'未填'}
+職業：${c.job||'未填'}
+病史／手術史：${c.history||'無'}
+目前用藥：${c.meds||'無'}
+禁忌注意：${c.contra||'無'}
+體質傾向：${c.constitution||'未填'}
+初診評估：${c.assessment||'未填'}
+長期調理方向：${c.direction||'未填'}
+
+═══════════════════════
+【歷次調理紀錄摘要】（共 ${allSessions.length} 次）
+═══════════════════════
+${historyText}
+
+═══════════════════════
+【本次調理完整紀錄】（第 ${idx+1} 次，${fmt(s.date)}）
+═══════════════════════
+調理師：${s.therapist==='glan'?'鈞':'萱'}
+上次回報：${s.feedback||'無'}
+今日主訴：${s.complaint||'無'}
+舌象：${s.tongue||'未觀察'}
+疼痛感（前→後）：${s.pb||'—'} → ${s.pa||'—'}
+緊繃感（前→後）：${s.tb||'—'} → ${s.ta||'—'}
+睡眠：${s.sleep||'—'}　精神：${s.energy||'—'}
+操作部位／經絡：${s.areas||'未填'}
+使用手法：${s.techniques||'未填'}
+特別發現：${s.findings||'無'}
+客戶即時感受：${s.response||'無'}
+居家保養建議：${s.homecare||'無'}
+預計下次重點：${s.next||'無'}
+
+═══════════════════════
+請用繁體中文，針對以下四個面向給予回饋。每個面向請用條列式說明，具體且實用，並在每個面向開頭標示對應標題。
+在手法建議與調理方向中，請同時整合**中醫經絡理論**與**現代解剖學觀點**（包含相關肌肉、筋膜鏈、肌動學分析），給予更全面的參考：
+
+[客戶整體評估與趨勢觀察]
+（根據所有歷次紀錄，分析客戶的整體改善趨勢、尚未解決的核心問題、體質變化方向，以及目前調理策略是否需要調整）
+
+[本次調理回顧與手法建議]
+（根據本次操作部位、手法、特別發現，從經絡理論與解剖學角度給予建議，包含相關肌肉群、筋膜鏈走向、肌動學代償模式，以及施作順序與力道的調整方向）
+
+[下次調理方向與重點觀察]
+（根據本次反應與客戶整體體質，建議下次優先處理的經絡與部位、對應的解剖結構、施作重點，以及調理前應特別觀察的指標）
+
+[客人養生與居家保健建議]
+（根據體質傾向與現有症狀，給予日常生活中具體可執行的養生方法、飲食建議、居家保健動作，包含適合的伸展或自我放鬆技巧）`;
+
+  try {
+    const res = await fetch('https://ai-proxy.a0985180305.workers.dev', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 3000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await res.json();
+    const text = data.content?.[0]?.text || '';
+
+    if (!text) {
+      // Show raw response for debugging
+      const errMsg = JSON.stringify(data).slice(0, 200);
+      if (btn) { btn.disabled = false; btn.innerHTML = '✨ 取得 AI 專家回饋'; }
+      const c2 = clients.find(x=>x.id===currentClientId);
+      const reversedIdx2 = c2.sessions.length - 1 - idx;
+      const card2 = document.querySelectorAll('.session-card')[reversedIdx2];
+      if (card2) {
+        const dbg = document.createElement('div');
+        dbg.style.cssText = 'background:#fdf0ee;border:1px solid #f5c0ba;border-radius:6px;padding:10px;margin-top:8px;font-size:12px;color:#c0392b;word-break:break-all;';
+        dbg.textContent = '錯誤回應：' + errMsg;
+        card2.appendChild(dbg);
+      }
+      return;
+    }
+
+    // Parse 4 sections
+    let overall = '', review = '', nextDir = '', wellness = '';
+    
+    const overallMatch = text.match(/\[客戶整體評估與趨勢觀察\]([\s\S]*?)(?=\[本次調理回顧|$)/);
+    const reviewMatch = text.match(/\[本次調理回顧與手法建議\]([\s\S]*?)(?=\[下次調理方向|$)/);
+    const nextMatch = text.match(/\[下次調理方向與重點觀察\]([\s\S]*?)(?=\[客人養生|$)/);
+    const wellnessMatch = text.match(/\[客人養生與居家保健建議\]([\s\S]*?)$/);
+    
+    if (overallMatch) overall = overallMatch[1].trim();
+    if (reviewMatch) review = reviewMatch[1].trim();
+    if (nextMatch) nextDir = nextMatch[1].trim();
+    if (wellnessMatch) wellness = wellnessMatch[1].trim();
+    
+    // Fallback: try emoji markers
+    if (!overall && !review && !nextDir && !wellness) {
+      const parts = text.split(/(?=📋|🔧|🎯|🌿|##)/);
+      parts.forEach(p => {
+        if (p.match(/📋|整體評估|趨勢觀察/)) overall = p.replace(/^[📋\s#]+[^\n]*\n?/, '').trim();
+        else if (p.match(/🔧|本次調理回顧|手法建議/)) review = p.replace(/^[🔧\s#]+[^\n]*\n?/, '').trim();
+        else if (p.match(/🎯|下次調理方向|重點觀察/)) nextDir = p.replace(/^[🎯\s#]+[^\n]*\n?/, '').trim();
+        else if (p.match(/🌿|養生|居家保健/)) wellness = p.replace(/^[🌿\s#]+[^\n]*\n?/, '').trim();
+      });
+    }
+    
+    if (!overall && !review && !nextDir && !wellness) review = text;
+
+    const aiFeedback = {
+      overall: overall,
+      review: review,
+      next: nextDir,
+      wellness: wellness,
+      generatedAt: new Date().toISOString()
+    };
+
+    // Save to Firebase
+    const sessions = [...(c.sessions||[])];
+    sessions[idx] = { ...sessions[idx], aiFeedback };
+    setSyncing(true);
+    try { await updateDoc(doc(db,'clients',currentClientId),{sessions}); } finally { setSyncing(false); }
+
+  } catch(e) {
+    console.error(e);
+    if (btn) { btn.disabled = false; btn.innerHTML = '✨ 取得 AI 專家回饋'; }
+    alert('AI 回饋取得失敗，請稍後再試');
+  }
+};
+</script>
+</body>
+</html>
