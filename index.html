@@ -1133,7 +1133,7 @@ ${historyText}
     let reflection = '', overall = '', review = '', nextDir = '', wellness = '';
 
     const KEYS = ['調理思路檢視','客戶整體評估與趨勢觀察','本次調理回顧與手法建議','下次調理方向與重點觀察','客人養生與居家保健建議'];
-    const sectionRe = new RegExp('(?:^|\\n)[^\\S\\n]*(?:#+\\s*|[-]+\\s*)?(?:\\*{0,2})\\[?(' + KEYS.map(k=>k.replace(/[\[\]]/g,'\\$&')).join('|') + ')\\]?(?:\\*{0,2})[^\\S\\n]*(?:\\n|$)', 'g');
+    const sectionRe = new RegExp('(?:^|\\n)[^\\S\\n]*(?:#+\\s*|[-]+\\s*)?[^\\S\\n]*(?:[\\p{Emoji}\\u200d\\ufe0f]*\\s*)*(?:\\*{0,2})\\[?(' + KEYS.map(k=>k.replace(/[\[\]]/g,'\\$&')).join('|') + ')\\]?(?:\\*{0,2})[^\\S\\n]*(?:\\n|$)', 'gu');
     const parsed = {};
     let lastKey = null, lastIdx = 0, m;
     while ((m = sectionRe.exec(text)) !== null) {
