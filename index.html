@@ -577,8 +577,8 @@ const auth = getAuth(app);
 
 // ══════════════ 預約 / 方案系統設定（部署後填入）══════════════
 const WORKER_URL = "https://booking-api.a0985180305.workers.dev"; // ← 部署 booking-worker.js 後的網址
-const THERAPIST_SHARED_SECRET = "YOUR_SHARED_SECRET";             // ← 與 Worker secret 相同的那串
-const LIFF_ID = "YOUR_LIFF_ID";                                   // ← 產生綁定連結用
+let THERAPIST_SHARED_SECRET = "";                                 // ← 登入後由 Firestore config/app 載入（不寫死在公開原始碼）
+const LIFF_ID = "2010520705-60EHkpbz";                            // ← 產生綁定連結用
 const PLAN_CONFIG = {
   a10: { label: '買10送2', total: 12, months: 1 },
   b20: { label: '買20送6', total: 26, months: 1.5 },
@@ -592,9 +592,17 @@ function calcExpiry(purchaseIso, months) {
   if (months - whole >= 0.5) d.setDate(d.getDate() + 15);
   return d.toISOString();
 }
+// 登入後從 Firestore（只有登入者讀得到的 config/app）載入推播密鑰，避免寫死在公開原始碼
+async function loadAppConfig() {
+  try {
+    const snap = await getDoc(doc(db, 'config', 'app'));
+    if (snap.exists() && snap.data().pushSecret) THERAPIST_SHARED_SECRET = snap.data().pushSecret;
+  } catch (e) { console.warn('載入推播設定失敗（通知功能將無法使用）', e); }
+}
 // 透過 Worker 發 LINE 推播（後台→Worker，共享密鑰授權）
 async function pushLine(lineUserId, message) {
   if (!lineUserId) return { skipped: true };
+  if (!THERAPIST_SHARED_SECRET) throw new Error('推播密鑰尚未載入，請重新登入後台再試');
   const res = await fetch(WORKER_URL, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'push', secret: THERAPIST_SHARED_SECRET, lineUserId, message }),
@@ -662,6 +670,9 @@ onAuthStateChanged(auth, (user) => {
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app-root').style.display = 'block';
     document.getElementById('logout-btn').style.display = '';
+
+    // 載入機密設定（推播密鑰）— 僅登入後可讀
+    loadAppConfig();
 
     // Start real-time listener
     if (unsubscribeSnapshot) unsubscribeSnapshot();
