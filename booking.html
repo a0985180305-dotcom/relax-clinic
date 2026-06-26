@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>線上預約｜經絡調理</title>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+:root{
+  --bg:#f6f4ef; --surface:#fffdf9; --surface2:#eee9df; --border:#ded7ca; --border2:#bfb6a8;
+  --text:#1f1c18; --text2:#655f56; --text3:#938b7f;
+  --teal:#2f7d65; --teal2:#e7f3ee; --teal3:#acd4c6;
+  --blue:#3b5bdb; --blue2:#e8f0ff; --pink:#c2255c; --pink2:#fce8f3;
+  --amber:#9e640f; --amber2:#fff3dc; --red:#b83429; --red2:#fbebe8;
+  --radius:10px; --radius-sm:7px;
+  --shadow:0 1px 3px rgba(28,22,13,.08),0 6px 18px rgba(28,22,13,.05);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{background:var(--bg);color:var(--text);font-family:"Noto Sans TC","Microsoft JhengHei",system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.6;min-height:100vh;}
+button,input,select{font:inherit;}button{cursor:pointer;}
+.app{max-width:520px;margin:0 auto;min-height:100vh;padding-bottom:76px;}
+.topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:8px;min-height:56px;padding:10px 16px;background:rgba(255,253,249,.96);border-bottom:1px solid var(--border);backdrop-filter:blur(10px);}
+.topbar h1{font-size:17px;font-weight:700;}
+.topbar .sub{color:var(--text3);font-size:12px;}
+.center{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:70vh;padding:30px;text-align:center;gap:14px;}
+.spinner{width:30px;height:30px;border:3px solid var(--border2);border-top-color:var(--teal);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:46px;width:100%;padding:12px 16px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:15px;font-weight:500;}
+.btn:active{transform:scale(.99);}
+.btn-primary{background:var(--teal);border-color:var(--teal);color:#fff;}
+.btn-primary:disabled{opacity:.5;}
+.btn-ghost{background:transparent;border-color:var(--border);}
+.card{margin:14px 16px;padding:16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);box-shadow:var(--shadow);}
+.field{margin-bottom:14px;}
+.field label{display:block;margin-bottom:6px;color:var(--text2);font-size:13px;}
+.field input{width:100%;min-height:46px;padding:11px 13px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface);font-size:16px;}
+.field input:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(47,125,101,.12);}
+.note{padding:11px 13px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text2);font-size:13px;}
+.note.warn{border-color:#e0bd7a;background:var(--amber2);color:#6f470d;}
+.note.danger{border-color:#e3b6ae;background:var(--red2);color:var(--red);}
+.note.ok{border-color:var(--teal3);background:var(--teal2);color:var(--teal);}
+/* therapist picker */
+.ther-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 16px 8px;}
+.ther-btn{min-height:54px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface);font-size:16px;font-weight:600;color:var(--text2);}
+.ther-btn.glan.on{background:var(--blue2);border-color:var(--blue);color:var(--blue);}
+.ther-btn.xuan.on{background:var(--pink2);border-color:var(--pink);color:var(--pink);}
+/* day + slots */
+.day{margin:0 16px 12px;}
+.day-head{margin:14px 0 8px;font-size:13px;font-weight:650;color:var(--text2);}
+.slots{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.slot{min-height:44px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface);font-size:15px;color:var(--text);}
+.slot.taken{background:var(--surface2);color:var(--text3);border-style:dashed;text-decoration:line-through;pointer-events:none;}
+.slot.sel{background:var(--teal);border-color:var(--teal);color:#fff;}
+/* package */
+.pkg{margin:14px 16px;padding:16px;border:1px solid var(--teal3);border-radius:var(--radius);background:var(--teal2);}
+.pkg-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;}
+.pkg-name{font-weight:700;color:var(--teal);}
+.pkg-remain{font-size:24px;font-weight:800;color:var(--teal);}
+.pkg-remain small{font-size:13px;font-weight:500;}
+.pkg-meta{font-size:12px;color:var(--text2);}
+.pkg.expired{border-color:#e3b6ae;background:var(--red2);}
+.pkg.expired .pkg-name,.pkg.expired .pkg-remain{color:var(--red);}
+/* booking item */
+.bk{margin:12px 16px;padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);box-shadow:var(--shadow);display:flex;justify-content:space-between;align-items:center;gap:10px;}
+.bk-date{font-weight:650;}.bk-sub{font-size:12px;color:var(--text3);margin-top:2px;}
+.pill{display:inline-flex;align-items:center;min-height:24px;padding:3px 9px;border-radius:999px;font-size:12px;border:1px solid var(--teal3);background:var(--teal2);color:var(--teal);}
+.pill.declined{border-color:#e3b6ae;background:var(--red2);color:var(--red);}
+.tag{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;margin-left:6px;}
+.tag.glan{background:var(--blue2);color:var(--blue);}.tag.xuan{background:var(--pink2);color:var(--pink);}
+.empty{padding:40px 20px;text-align:center;color:var(--text3);}
+/* tabbar */
+.tabbar{position:fixed;bottom:0;left:0;right:0;max-width:520px;margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr);background:rgba(255,253,249,.97);border-top:1px solid var(--border);backdrop-filter:blur(10px);padding-bottom:env(safe-area-inset-bottom);}
+.tab{padding:10px 0 12px;text-align:center;font-size:12px;color:var(--text3);background:none;border:none;}
+.tab .ic{font-size:20px;display:block;line-height:1.4;}
+.tab.on{color:var(--teal);font-weight:600;}
+.screen{display:none;}.screen.on{display:block;}
+.sticky-cta{position:fixed;bottom:64px;left:0;right:0;max-width:520px;margin:0 auto;padding:10px 16px;background:linear-gradient(transparent,var(--bg) 30%);}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- 載入中 -->
+  <div id="boot" class="center">
+    <div class="spinner"></div>
+    <div style="color:var(--text3)">載入中…</div>
+  </div>
+
+  <!-- 綁定畫面 -->
+  <div id="bind" class="screen">
+    <div class="topbar"><div><h1>歡迎</h1><div class="sub">首次使用請先綁定資料</div></div></div>
+    <div class="card">
+      <div class="note" style="margin-bottom:14px">為了顯示您的方案次數與預約，請輸入<strong>調理時留的電話</strong>進行綁定。</div>
+      <div class="field"><label>姓名（選填，加快比對）</label><input id="bind-name" placeholder="您的姓名"></div>
+      <div class="field"><label>電話 *</label><input id="bind-phone" type="tel" inputmode="numeric" placeholder="例：0912345678"></div>
+      <div id="bind-msg" class="note danger" style="display:none;margin-bottom:12px"></div>
+      <button class="btn btn-primary" id="bind-btn" onclick="doBindPhone()">綁定</button>
+    </div>
+    <div class="card">
+      <div style="font-size:13px;color:var(--text2)">找不到資料或電話有變動？請於對話視窗直接訊息調理師協助綁定。</div>
+    </div>
+  </div>
+
+  <!-- 主畫面 -->
+  <div id="main" class="screen">
+    <div class="topbar"><div><h1 id="hello">您好</h1><div class="sub">經絡調理線上預約</div></div></div>
+
+    <!-- 預約 -->
+    <div id="s-book" class="screen on">
+      <div class="ther-row">
+        <button class="ther-btn glan on" id="tb-glan" onclick="pickTher('glan')">調理師 鈞</button>
+        <button class="ther-btn xuan" id="tb-xuan" onclick="pickTher('xuan')">調理師 萱</button>
+      </div>
+      <div id="avail"></div>
+      <div class="sticky-cta" id="book-cta" style="display:none">
+        <button class="btn btn-primary" id="book-btn" onclick="doBook()">確認預約</button>
+      </div>
+    </div>
+
+    <!-- 我的方案 -->
+    <div id="s-pkg" class="screen">
+      <div id="pkg-list"></div>
+    </div>
+
+    <!-- 我的預約 -->
+    <div id="s-my" class="screen">
+      <div id="my-list"></div>
+    </div>
+
+    <div class="tabbar">
+      <button class="tab on" id="tab-book" onclick="goTab('book')"><span class="ic">📅</span>預約</button>
+      <button class="tab" id="tab-pkg" onclick="goTab('pkg')"><span class="ic">🎫</span>我的方案</button>
+      <button class="tab" id="tab-my" onclick="goTab('my')"><span class="ic">📋</span>我的預約</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════ 設定（部署前填入）══════════════════
+const LIFF_ID = "2010520705-60EHkpbz";                           // ← LINE Developers 建立 LIFF 後填入
+const WORKER_URL = "https://booking-api.a0985180305.workers.dev"; // ← 部署 booking-worker.js 後的網址
+const THERAPIST_LABEL = { glan: '鈞', xuan: '萱' };
+const DOW_LABEL = ['日','一','二','三','四','五','六'];
+// ════════════════════════════════════════════════════════
+
+let idToken = null;
+let me = null;
+let curTher = 'glan';
+let selSlot = null;       // { start, therapist }
+let availCache = {};      // therapist -> data
+
+async function api(action, payload = {}) {
+  const res = await fetch(WORKER_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, idToken, ...payload }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || '系統忙線，請稍後再試');
+  return data;
+}
+
+function showScreen(id) {
+  ['boot','bind','main'].forEach(s => document.getElementById(s).classList.toggle('on', s === id));
+  if (id !== 'boot') document.getElementById('boot').style.display = 'none';
+}
+
+async function boot() {
+  try {
+    await liff.init({ liffId: LIFF_ID });
+    if (!liff.isLoggedIn()) { liff.login(); return; }
+    idToken = liff.getIDToken();
+    if (!idToken) throw new Error('無法取得 LINE 身分，請重新開啟');
+
+    // 若連結帶 bindToken，先嘗試綁定
+    const params = new URLSearchParams(location.search);
+    const bindToken = params.get('bindToken') || (liff.state ? new URLSearchParams(liff.state).get('bindToken') : null);
+    if (bindToken) { try { await api('bindByToken', { bindToken }); } catch(e){} }
+
+    me = await api('me');
+    if (!me.bound) { showScreen('bind'); return; }
+    enterMain();
+  } catch (e) {
+    document.getElementById('boot').innerHTML =
+      '<div class="note danger" style="margin:20px">啟動失敗：' + (e.message || e) + '</div>';
+  }
+}
+
+async function doBindPhone() {
+  const phone = document.getElementById('bind-phone').value.trim();
+  const name = document.getElementById('bind-name').value.trim();
+  const msg = document.getElementById('bind-msg');
+  const btn = document.getElementById('bind-btn');
+  msg.style.display = 'none';
+  if (!phone) { msg.textContent = '請輸入電話'; msg.style.display = 'block'; return; }
+  btn.disabled = true; btn.textContent = '綁定中…';
+  try {
+    await api('bindByPhone', { phone, name });
+    me = await api('me');
+    enterMain();
+  } catch (e) {
+    msg.textContent = e.message; msg.style.display = 'block';
+  } finally { btn.disabled = false; btn.textContent = '綁定'; }
+}
+
+function enterMain() {
+  document.getElementById('hello').textContent = (me.name || '您') + ' 您好';
+  // 若客戶有歸屬調理師，預設選他
+  if (me.therapist === 'xuan') pickTher('xuan'); else pickTher('glan');
+  showScreen('main');
+  goTab('book');
+}
+
+function goTab(t) {
+  ['book','pkg','my'].forEach(x => {
+    document.getElementById('s-' + x).classList.toggle('on', x === t);
+    document.getElementById('tab-' + x).classList.toggle('on', x === t);
+  });
+  document.getElementById('book-cta').style.display = (t === 'book' && selSlot) ? '' : 'none';
+  if (t === 'pkg') renderPackages();
+  if (t === 'my') renderMyBookings();
+}
+
+function pickTher(t) {
+  curTher = t;
+  document.getElementById('tb-glan').classList.toggle('on', t === 'glan');
+  document.getElementById('tb-xuan').classList.toggle('on', t === 'xuan');
+  selSlot = null; document.getElementById('book-cta').style.display = 'none';
+  loadAvailability();
+}
+
+async function loadAvailability() {
+  const el = document.getElementById('avail');
+  el.innerHTML = '<div class="center" style="min-height:40vh"><div class="spinner"></div></div>';
+  try {
+    const data = await api('availability', { therapist: curTher, days: 14 });
+    availCache[curTher] = data;
+    renderAvailability(data);
+  } catch (e) {
+    el.innerHTML = '<div class="note danger" style="margin:16px">' + e.message + '</div>';
+  }
+}
+
+function renderAvailability(data) {
+  const el = document.getElementById('avail');
+  if (!data.days.length) {
+    el.innerHTML = '<div class="empty">這位調理師近期尚未開放時段，<br>請改選另一位或稍後再看。</div>';
+    return;
+  }
+  el.innerHTML = data.days.map(d => {
+    const [, m, day] = d.date.split('-');
+    const slots = d.slots.map(s =>
+      `<button class="slot ${s.available ? '' : 'taken'}" ${s.available ? `onclick="selectSlot('${s.start}',this)"` : ''}>${s.time}</button>`
+    ).join('');
+    return `<div class="day"><div class="day-head">${parseInt(m)}/${parseInt(day)}（${DOW_LABEL[d.dow]}）</div><div class="slots">${slots}</div></div>`;
+  }).join('');
+}
+
+function selectSlot(start, btn) {
+  document.querySelectorAll('.slot.sel').forEach(s => s.classList.remove('sel'));
+  btn.classList.add('sel');
+  selSlot = { start, therapist: curTher };
+  const cta = document.getElementById('book-cta');
+  cta.style.display = '';
+  const d = new Date(start);
+  document.getElementById('book-btn').textContent =
+    `確認預約 ${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}（${THERAPIST_LABEL[curTher]}）`;
+}
+
+async function doBook() {
+  if (!selSlot) return;
+  const btn = document.getElementById('book-btn');
+  btn.disabled = true; btn.textContent = '預約中…';
+  try {
+    await api('book', { therapist: selSlot.therapist, start: selSlot.start });
+    selSlot = null;
+    document.getElementById('book-cta').style.display = 'none';
+    alertOk('預約成功！可在「我的預約」查看。');
+    await loadAvailability();
+    goTab('my');
+  } catch (e) {
+    alertOk(e.message, true);
+    await loadAvailability();
+  } finally { btn.disabled = false; }
+}
+
+async function renderPackages() {
+  const el = document.getElementById('pkg-list');
+  el.innerHTML = '<div class="center" style="min-height:30vh"><div class="spinner"></div></div>';
+  try {
+    me = await api('me');
+    const pkgs = me.packages || [];
+    if (!pkgs.length) {
+      el.innerHTML = '<div class="empty">目前沒有有效方案。<br>如需購買優惠方案，歡迎詢問調理師 😊</div>';
+      return;
+    }
+    el.innerHTML = pkgs.map(p => `
+      <div class="pkg ${p.expired ? 'expired' : ''}">
+        <div class="pkg-top">
+          <span class="pkg-name">${p.label}</span>
+          <span class="pkg-remain">${p.remaining}<small> / ${p.total} 次</small></span>
+        </div>
+        <div class="pkg-meta">購買日 ${fmtDate(p.purchaseDate)}　·　${p.expiryDate ? '效期至 ' + fmtDate(p.expiryDate) : '無期限'}</div>
+        ${p.expired ? '<div class="pkg-meta" style="color:var(--red);margin-top:4px">已過期</div>' : ''}
+      </div>`).join('');
+  } catch (e) {
+    el.innerHTML = '<div class="note danger" style="margin:16px">' + e.message + '</div>';
+  }
+}
+
+async function renderMyBookings() {
+  const el = document.getElementById('my-list');
+  el.innerHTML = '<div class="center" style="min-height:30vh"><div class="spinner"></div></div>';
+  try {
+    const data = await api('myBookings');
+    if (!data.bookings.length) {
+      el.innerHTML = '<div class="empty">目前沒有預約。<br>到「預約」分頁挑個時段吧！</div>';
+      return;
+    }
+    el.innerHTML = data.bookings.map(b => {
+      const d = new Date(b.start);
+      const tname = THERAPIST_LABEL[b.therapist] || '';
+      const tcls = b.therapist === 'glan' ? 'glan' : 'xuan';
+      const declined = b.status === 'declined';
+      return `<div class="bk">
+        <div>
+          <div class="bk-date">${d.getMonth()+1}/${d.getDate()}（${DOW_LABEL[d.getDay()]}）${pad(d.getHours())}:${pad(d.getMinutes())}<span class="tag ${tcls}">${tname}</span></div>
+          <div class="bk-sub">${declined ? '調理師暫時無法接受此時段' : '已預約，期待見到您'}</div>
+        </div>
+        ${declined
+          ? '<span class="pill declined">未成立</span>'
+          : `<button class="btn btn-ghost" style="width:auto;min-height:38px;padding:8px 12px;font-size:13px" onclick="doCancel('${b.bookingId}')">取消</button>`}
+      </div>`;
+    }).join('');
+  } catch (e) {
+    el.innerHTML = '<div class="note danger" style="margin:16px">' + e.message + '</div>';
+  }
+}
+
+async function doCancel(bookingId) {
+  if (!confirm('確定要取消這筆預約嗎？')) return;
+  try {
+    await api('cancelBooking', { bookingId });
+    renderMyBookings();
+  } catch (e) { alertOk(e.message, true); }
+}
+
+// 簡易提示（沿用 note 樣式，置頂浮現）
+function alertOk(text, danger) {
+  const d = document.createElement('div');
+  d.className = 'note ' + (danger ? 'danger' : 'ok');
+  d.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:50;max-width:90%;box-shadow:var(--shadow)';
+  d.textContent = text;
+  document.body.appendChild(d);
+  setTimeout(() => d.remove(), 3200);
+}
+
+function pad(n) { return String(n).padStart(2, '0'); }
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return iso.slice(0, 10).replace(/-/g, '/');
+  return `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())}`;
+}
+
+boot();
+</script>
+</body>
+</html>

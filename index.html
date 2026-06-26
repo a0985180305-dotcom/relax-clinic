@@ -216,6 +216,10 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
     <span class="filter-chip" onclick="setFilter('glan',this)">鈞</span>
     <span class="filter-chip" onclick="setFilter('xuan',this)">萱</span>
   </div>
+  <div style="display:flex;gap:8px;padding:0 16px 8px;">
+    <button class="btn btn-sm btn-ghost" style="flex:1;" onclick="openBookings()">📅 預約管理</button>
+    <button class="btn btn-sm btn-ghost" style="flex:1;" onclick="openSchedule()">🗓️ 班表設定</button>
+  </div>
   <div class="list-wrap" id="client-list"></div>
 </div>
 
@@ -408,6 +412,7 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
     </div>
   </div>
   <div id="profile-content"></div>
+  <div id="profile-packages"></div>
   <div class="section">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
       <div class="section-label" style="margin:0; border:none; padding:0;">調理紀錄</div>
@@ -494,12 +499,67 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
   <div style="height:20px;"></div>
 </div>
 
+<!-- 預約管理 -->
+<div id="s-bookings" class="screen">
+  <div class="topbar">
+    <button class="btn btn-icon btn-ghost" onclick="goHome()">← 返回</button>
+    <h1>預約管理</h1>
+    <button class="btn btn-sm btn-ghost" onclick="openBookings()">↻</button>
+  </div>
+  <div class="filter-bar">
+    <span class="filter-chip on" id="bk-f-all" onclick="setBkFilter('all')">全部</span>
+    <span class="filter-chip" id="bk-f-glan" onclick="setBkFilter('glan')">鈞</span>
+    <span class="filter-chip" id="bk-f-xuan" onclick="setBkFilter('xuan')">萱</span>
+  </div>
+  <div class="list-wrap" id="bookings-list"><div style="text-align:center;padding:30px;color:var(--text3)">載入中…</div></div>
+</div>
+
+<!-- 班表設定 -->
+<div id="s-schedule" class="screen">
+  <div class="topbar">
+    <button class="btn btn-icon btn-ghost" onclick="goHome()">← 返回</button>
+    <h1>班表設定</h1>
+    <button class="btn btn-primary btn-sm" onclick="saveSchedule()">儲存</button>
+  </div>
+  <div class="section">
+    <div class="section-label">選擇調理師</div>
+    <div class="therapist-row">
+      <button class="therapist-btn glan on" id="schb-glan" onclick="loadSchedule('glan')">鈞</button>
+      <button class="therapist-btn xuan" id="schb-xuan" onclick="loadSchedule('xuan')">萱</button>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="section-label">每週固定可約時段</div>
+    <div class="note" style="margin-bottom:12px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text2);font-size:13px;">
+      每格輸入該日可約的開始時間，用逗號分隔，例如：<code>10:00, 11:00, 14:00, 15:00</code>。留空表示該日不開放。
+    </div>
+    <div id="sched-fields"></div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="section-label">單日調整（休診 / 臨時加開）</div>
+    <div class="note" style="margin-bottom:12px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text2);font-size:13px;">
+      臨時要請假或加開時用。選日期後，下方會帶出「該日實際可約時段」，直接改成當天要開放的時間即可。<strong>清空＝當日休診</strong>。改完按「儲存單日」。
+    </div>
+    <div class="field"><label>選擇日期</label><input id="ov-date" type="date" onchange="loadOverride()"></div>
+    <div id="ov-body" style="display:none;">
+      <div class="field"><label id="ov-label">該日可約時段</label><input id="ov-times" placeholder="例：10:00, 11:00, 14:00（清空＝休診）"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-sm btn-primary" style="flex:1;" onclick="saveOverride()">儲存單日</button>
+        <button class="btn btn-sm btn-ghost" style="flex:1;" onclick="resetOverride()">恢復為固定班表</button>
+      </div>
+    </div>
+  </div>
+  <div style="height:20px;"></div>
+</div>
+
 </div>
 </div><!-- /app-root -->
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
-import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, getDoc, setDoc, getDocs, query, where, orderBy } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
 
 const firebaseConfig = {
@@ -514,6 +574,36 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
+
+// ══════════════ 預約 / 方案系統設定（部署後填入）══════════════
+const WORKER_URL = "https://booking-api.a0985180305.workers.dev"; // ← 部署 booking-worker.js 後的網址
+const THERAPIST_SHARED_SECRET = "YOUR_SHARED_SECRET";             // ← 與 Worker secret 相同的那串
+const LIFF_ID = "YOUR_LIFF_ID";                                   // ← 產生綁定連結用
+const PLAN_CONFIG = {
+  a10: { label: '買10送2', total: 12, months: 1 },
+  b20: { label: '買20送6', total: 26, months: 1.5 },
+  c30: { label: '買30送10', total: 40, months: 2 },
+};
+// 依購買日 + 效期月數算到期日（1.5 月 = +1 月又 15 天）
+function calcExpiry(purchaseIso, months) {
+  const d = new Date(purchaseIso);
+  const whole = Math.floor(months);
+  d.setMonth(d.getMonth() + whole);
+  if (months - whole >= 0.5) d.setDate(d.getDate() + 15);
+  return d.toISOString();
+}
+// 透過 Worker 發 LINE 推播（後台→Worker，共享密鑰授權）
+async function pushLine(lineUserId, message) {
+  if (!lineUserId) return { skipped: true };
+  const res = await fetch(WORKER_URL, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'push', secret: THERAPIST_SHARED_SECRET, lineUserId, message }),
+  });
+  if (!res.ok) { const t = await res.text().catch(()=>'' ); throw new Error('推播失敗：' + t.slice(0,150)); }
+  return res.json();
+}
+const THER_NAME = { glan: '鈞', xuan: '萱' };
+// ════════════════════════════════════════════════════════════
 
 let clients = [];
 let currentClientId = null;
@@ -583,7 +673,7 @@ onAuthStateChanged(auth, (user) => {
       renderList();
       if (currentClientId) {
         const c = clients.find(x => x.id === currentClientId);
-        if (c) renderSessions(c);
+        if (c) { renderPackages(c); renderSessions(c); }
       }
     }, (err) => {
       document.getElementById('loading').classList.add('hidden');
@@ -741,6 +831,7 @@ window.showProfile = (id) => {
   ${c.direction?`<div class="note-block"><div class="note-label">根本調理方向</div><div class="note-text">${c.direction}</div></div>`:''}
   </div><div class="divider"></div>`;
   document.getElementById('profile-content').innerHTML = html;
+  renderPackages(c);
   renderSessions(c);
   show('s-profile');
 };
@@ -1202,6 +1293,257 @@ ${historyText}
     if (btn) { btn.disabled = false; btn.innerHTML = '✨ 取得 AI 專家回饋'; }
     alert('AI 回饋取得失敗，請稍後再試');
   }
+};
+
+// ══════════════════ 方案 / 點數 ══════════════════
+function pkgRemaining(p){ return Math.max((p.totalSessions||0)-(p.usedSessions||0),0); }
+
+function renderPackages(c){
+  const el = document.getElementById('profile-packages');
+  if (!el) return;
+  const pkgs = c.packages || [];
+  const now = new Date();
+  const cards = pkgs.length ? pkgs.map(p => {
+    const total = p.totalSessions||0, remaining = pkgRemaining(p);
+    const expired = p.expiryDate && new Date(p.expiryDate) < now;
+    const used = remaining<=0;
+    const label = (PLAN_CONFIG[p.type]||{}).label || p.type;
+    const dim = (expired||used) ? 'opacity:.55;' : '';
+    const color = (expired||used) ? 'var(--text3)' : 'var(--teal)';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;${dim}">
+      <div><div style="font-weight:600">${label}</div><div style="font-size:12px;color:var(--text3)">購買 ${fmt(p.purchaseDate)} · ${p.expiryDate?'效期至 '+fmt(p.expiryDate):'無期限'}${expired?' · 已過期':''}${used&&!expired?' · 已用完':''}</div></div>
+      <div style="font-size:20px;font-weight:800;color:${color}">${remaining}<span style="font-size:12px;font-weight:500"> / ${total}</span></div>
+    </div>`;
+  }).join('') : '<div style="color:var(--text3);font-size:13px;margin-bottom:8px">尚無方案</div>';
+
+  el.innerHTML = `<div class="section">
+    <div class="section-label">方案 / 點數</div>
+    ${cards}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+      <button class="btn btn-sm" onclick="addPackage('a10')">＋買10送2</button>
+      <button class="btn btn-sm" onclick="addPackage('b20')">＋買20送6</button>
+      <button class="btn btn-sm" onclick="addPackage('c30')">＋買30送10</button>
+    </div>
+    <button class="btn btn-sm btn-primary" style="margin-top:10px;width:100%" onclick="completeDeduct()">✓ 完成本次調理（扣 1 次並通知）</button>
+    <div style="margin-top:10px;font-size:13px;color:var(--text2);display:flex;align-items:center;gap:8px">
+      LINE 綁定：${c.lineUserId ? '已綁定 ✓' : '<button class="btn btn-sm btn-ghost" onclick="genBindLink()">產生綁定連結</button>'}
+    </div>
+  </div><div class="divider"></div>`;
+}
+
+window.addPackage = async (type) => {
+  const c = clients.find(x => x.id === currentClientId); if (!c) return;
+  const cfg = PLAN_CONFIG[type]; if (!cfg) return;
+  if (!confirm(`為「${c.name}」新增方案「${cfg.label}」（共 ${cfg.total} 次，效期 ${cfg.months} 個月）？`)) return;
+  const purchaseDate = new Date().toISOString();
+  const pkg = { type, totalSessions: cfg.total, usedSessions: 0, purchaseDate, expiryDate: calcExpiry(purchaseDate, cfg.months) };
+  const pkgs = [...(c.packages||[]), pkg];
+  setSyncing(true);
+  try { await updateDoc(doc(db,'clients',c.id), { packages: pkgs }); } finally { setSyncing(false); }
+  c.packages = pkgs; renderPackages(c);
+};
+
+// 從最早到期、仍有效的方案扣 1 次
+async function deductOne(client) {
+  const pkgs = [...(client.packages||[])];
+  const now = new Date();
+  const cand = pkgs.map((p,i) => ({p,i}))
+    .filter(x => pkgRemaining(x.p) > 0 && (!x.p.expiryDate || new Date(x.p.expiryDate) >= now))
+    .sort((a,b) => String(a.p.expiryDate||'').localeCompare(String(b.p.expiryDate||'')));
+  if (!cand.length) return { ok: false, msg: '此客戶沒有可扣的有效方案' };
+  const idx = cand[0].i;
+  pkgs[idx] = { ...pkgs[idx], usedSessions: (pkgs[idx].usedSessions||0) + 1 };
+  await updateDoc(doc(db,'clients',client.id), { packages: pkgs });
+  client.packages = pkgs;
+  return {
+    ok: true,
+    remaining: pkgRemaining(pkgs[idx]),
+    label: (PLAN_CONFIG[pkgs[idx].type]||{}).label || pkgs[idx].type,
+    expiry: pkgs[idx].expiryDate,
+  };
+}
+
+window.completeDeduct = async () => {
+  const c = clients.find(x => x.id === currentClientId); if (!c) return;
+  if (!confirm('確認完成本次調理並扣 1 次？')) return;
+  setSyncing(true);
+  try {
+    const r = await deductOne(c);
+    if (!r.ok) { alert(r.msg + '\n（如為單次散客，請另計 1200 元）'); return; }
+    let tail;
+    if (c.lineUserId) {
+      try {
+        await pushLine(c.lineUserId, `親愛的 ${c.name} 您好 🌿\n本次調理已完成，已扣除 1 次。\n方案「${r.label}」剩餘 ${r.remaining} 次${r.expiry ? `，效期至 ${fmt(r.expiry)}` : ''}。\n感謝您的信任，期待下次為您服務！`);
+        tail = '，並已通知客戶';
+      } catch (e) { tail = '（但推播失敗：' + e.message + '）'; }
+    } else { tail = '（客戶尚未綁定 LINE，未發送通知）'; }
+    alert(`已扣 1 次，剩餘 ${r.remaining} 次${tail}`);
+    renderPackages(c);
+  } finally { setSyncing(false); }
+};
+
+window.genBindLink = async () => {
+  const c = clients.find(x => x.id === currentClientId); if (!c) return;
+  if (LIFF_ID === 'YOUR_LIFF_ID') { alert('請先在程式頂部設定 LIFF_ID 後再使用'); return; }
+  const token = (crypto.randomUUID ? crypto.randomUUID() : 'tk' + Date.now() + Math.random().toString(36).slice(2));
+  const expiresAt = new Date(Date.now() + 7*86400000).toISOString();
+  setSyncing(true);
+  try {
+    await setDoc(doc(db,'bindTokens',token), { clientId: c.id, clientName: c.name, used: false, expiresAt, createdAt: new Date().toISOString() });
+  } finally { setSyncing(false); }
+  const url = `https://liff.line.me/${LIFF_ID}?bindToken=${token}`;
+  try { await navigator.clipboard.writeText(url); alert('綁定連結已複製，貼給客戶即可（7 天內有效）：\n\n' + url); }
+  catch (e) { prompt('複製此綁定連結給客戶（7 天內有效）：', url); }
+};
+
+// ══════════════════ 預約管理 ══════════════════
+let bkFilter = 'all';
+let bkCache = [];
+window.openBookings = async () => {
+  show('s-bookings');
+  const el = document.getElementById('bookings-list');
+  el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3)">載入中…</div>';
+  try {
+    const nowIso = new Date().toISOString();
+    const snap = await getDocs(query(collection(db,'bookings'), where('start','>=',nowIso), orderBy('start','asc')));
+    bkCache = []; snap.forEach(d => bkCache.push({ id: d.id, ...d.data() }));
+    renderBookingsList();
+  } catch (e) {
+    el.innerHTML = '<div style="margin:16px;padding:12px;border:1px solid #e3b6ae;background:var(--red2);color:var(--red);border-radius:var(--radius-sm)">讀取失敗：' + e.message + '</div>';
+  }
+};
+window.setBkFilter = (f) => {
+  bkFilter = f;
+  ['all','glan','xuan'].forEach(x => document.getElementById('bk-f-'+x).classList.toggle('on', x===f));
+  renderBookingsList();
+};
+function renderBookingsList() {
+  const el = document.getElementById('bookings-list');
+  let rows = bkCache.filter(b => b.status === 'confirmed');
+  if (bkFilter !== 'all') rows = rows.filter(b => b.therapist === bkFilter);
+  if (!rows.length) { el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3)">目前沒有待處理的預約</div>'; return; }
+  el.innerHTML = rows.map(b => {
+    const d = new Date(b.start);
+    const tcls = b.therapist === 'glan' ? 'tag-glan' : 'tag-xuan';
+    const t = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+    return `<div class="client-card" style="cursor:default">
+      <div class="client-info">
+        <div class="client-name">${b.clientName||'(未命名)'} <span class="therapist-tag ${tcls}">${THER_NAME[b.therapist]||''}</span></div>
+        <div class="client-meta">${d.getMonth()+1}/${d.getDate()}（${'日一二三四五六'[d.getDay()]}）${t}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="btn btn-sm" onclick="completeBooking('${b.id}')">完成扣次</button>
+        <button class="btn btn-sm btn-ghost" style="color:var(--red)" onclick="declineBooking('${b.id}')">拒絕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+window.declineBooking = async (id) => {
+  const b = bkCache.find(x => x.id === id); if (!b) return;
+  if (!confirm('拒絕並取消此預約？將通知客戶並釋出時段。')) return;
+  setSyncing(true);
+  try {
+    await updateDoc(doc(db,'bookings',id), { status: 'declined', declinedAt: new Date().toISOString() });
+    if (b.lineUserId) {
+      try { await pushLine(b.lineUserId, `您好，很抱歉 🙏\n您預約的 ${fmt(b.start)} 時段，調理師臨時無法接受，此預約已取消。\n造成不便敬請見諒，歡迎重新挑選其他時段預約。`); } catch (e) {}
+    }
+    b.status = 'declined';
+  } finally { setSyncing(false); }
+  renderBookingsList();
+};
+window.completeBooking = async (id) => {
+  const b = bkCache.find(x => x.id === id); if (!b) return;
+  const c = clients.find(x => x.id === b.clientId);
+  if (!c) { alert('找不到對應的客戶資料，無法扣次'); return; }
+  if (!confirm(`確認「${c.name}」本次調理完成並扣 1 次？`)) return;
+  setSyncing(true);
+  try {
+    const r = await deductOne(c);
+    if (!r.ok) { alert(r.msg + '\n（如為單次散客，請另計 1200 元）'); return; }
+    await updateDoc(doc(db,'bookings',id), { status: 'completed', completedAt: new Date().toISOString() });
+    b.status = 'completed';
+    let tail;
+    if (c.lineUserId) {
+      try { await pushLine(c.lineUserId, `親愛的 ${c.name} 您好 🌿\n本次調理已完成，已扣除 1 次。\n方案「${r.label}」剩餘 ${r.remaining} 次${r.expiry ? `，效期至 ${fmt(r.expiry)}` : ''}。\n期待下次為您服務！`); tail = '，並已通知客戶'; }
+      catch (e) { tail = '（推播失敗：' + e.message + '）'; }
+    } else { tail = '（客戶未綁定 LINE，未通知）'; }
+    alert(`已扣 1 次，剩餘 ${r.remaining} 次${tail}`);
+  } finally { setSyncing(false); }
+  renderBookingsList();
+};
+
+// ══════════════════ 班表設定 ══════════════════
+const DOW_KEYS = [['mon','週一'],['tue','週二'],['wed','週三'],['thu','週四'],['fri','週五'],['sat','週六'],['sun','週日']];
+let schTher = 'glan';
+window.openSchedule = () => { show('s-schedule'); loadSchedule('glan'); };
+window.loadSchedule = async (t) => {
+  schTher = t;
+  document.getElementById('schb-glan').classList.toggle('on', t==='glan');
+  document.getElementById('schb-xuan').classList.toggle('on', t==='xuan');
+  const wrap = document.getElementById('sched-fields');
+  wrap.innerHTML = '<div style="color:var(--text3);padding:10px">載入中…</div>';
+  let data = {};
+  try { const d = await getDoc(doc(db,'scheduleTemplate',t)); if (d.exists()) data = d.data(); } catch (e) {}
+  wrap.innerHTML = DOW_KEYS.map(([k,label]) => {
+    const val = (data[k]||[]).join(', ');
+    return `<div class="field"><label>${label}</label><input id="sch-${k}" value="${val}" placeholder="例：10:00, 11:00, 14:00"></div>`;
+  }).join('');
+  const ovd = document.getElementById('ov-date');
+  if (ovd && ovd.value) loadOverride();
+};
+window.saveSchedule = async () => {
+  const out = {};
+  DOW_KEYS.forEach(([k]) => {
+    const raw = (document.getElementById('sch-'+k)||{}).value || '';
+    const times = raw.split(/[,，\s]+/).map(s => s.trim()).filter(s => /^\d{1,2}:\d{2}$/.test(s))
+      .map(s => { const [h,m] = s.split(':'); return String(h).padStart(2,'0') + ':' + m; });
+    out[k] = [...new Set(times)].sort();
+  });
+  setSyncing(true);
+  try { await setDoc(doc(db,'scheduleTemplate',schTher), out); } finally { setSyncing(false); }
+  alert('已儲存「' + THER_NAME[schTher] + '」的班表');
+};
+
+// 單日調整（休診 / 臨時加開）— 寫入 scheduleOverride/{therapist}_{date}.slots（絕對指定；空＝休診）
+const DOW_TO_KEY = { 0:'sun', 1:'mon', 2:'tue', 3:'wed', 4:'thu', 5:'fri', 6:'sat' };
+window.loadOverride = async () => {
+  const date = document.getElementById('ov-date').value;
+  const body = document.getElementById('ov-body');
+  if (!date) { body.style.display = 'none'; return; }
+  const [y, mo, da] = date.split('-').map(Number);
+  const dow = new Date(y, mo - 1, da).getDay();
+  let times = null;
+  try {
+    const ov = await getDoc(doc(db,'scheduleOverride', `${schTher}_${date}`));
+    if (ov.exists() && Array.isArray(ov.data().slots)) times = ov.data().slots;
+  } catch (e) {}
+  if (times === null) {
+    try {
+      const tpl = await getDoc(doc(db,'scheduleTemplate', schTher));
+      times = tpl.exists() ? (tpl.data()[DOW_TO_KEY[dow]] || []) : [];
+    } catch (e) { times = []; }
+  }
+  document.getElementById('ov-label').textContent = `${THER_NAME[schTher]}｜${date} 可約時段`;
+  document.getElementById('ov-times').value = times.join(', ');
+  body.style.display = '';
+};
+window.saveOverride = async () => {
+  const date = document.getElementById('ov-date').value; if (!date) return;
+  const raw = document.getElementById('ov-times').value || '';
+  const slots = raw.split(/[,，\s]+/).map(s => s.trim()).filter(s => /^\d{1,2}:\d{2}$/.test(s))
+    .map(s => { const [h, m] = s.split(':'); return String(h).padStart(2,'0') + ':' + m; });
+  const uniq = [...new Set(slots)].sort();
+  setSyncing(true);
+  try { await setDoc(doc(db,'scheduleOverride', `${schTher}_${date}`), { slots: uniq, therapist: schTher, date, updatedAt: new Date().toISOString() }); }
+  finally { setSyncing(false); }
+  alert(uniq.length ? `已儲存 ${THER_NAME[schTher]}　${date} 的可約時段（${uniq.length} 格）` : `已設定 ${THER_NAME[schTher]}　${date} 為「休診」`);
+};
+window.resetOverride = async () => {
+  const date = document.getElementById('ov-date').value; if (!date) return;
+  if (!confirm(`恢復 ${THER_NAME[schTher]}　${date} 為固定班表？（移除這天的單日設定）`)) return;
+  setSyncing(true);
+  try { await deleteDoc(doc(db,'scheduleOverride', `${schTher}_${date}`)); } catch (e) {} finally { setSyncing(false); }
+  loadOverride();
 };
 </script>
 </body>
