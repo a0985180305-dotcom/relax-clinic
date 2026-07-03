@@ -1,0 +1,13 @@
+# Wrangler 本地暫存
+.wrangler/
+
+# 個人本機設定（權限白名單），不進公開 repo
+.claude/settings.local.json
+
+# 依賴與雜項
+node_modules/
+*.log
+
+# 保險：任何服務帳號金鑰檔絕不入版控
+*firebase-adminsdk*.json
+*service-account*.json

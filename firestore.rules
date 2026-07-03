@@ -1,0 +1,38 @@
+rules_version = '2';
+// 經絡調理系統 Firestore 安全規則
+// ───────────────────────────────────────────────
+// 原則：
+//  - 後台（調理師）以 Firebase Auth 登入 → 可讀寫全部。
+//  - 客戶端 LIFF「不」直接連 Firestore，一律透過 booking-worker。
+//    Worker 用「服務帳號」存取，會「繞過」這些規則，因此這裡只要
+//    把所有匿名/未登入的直接存取擋掉即可（避免個資外洩）。
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+
+    // 客戶主檔（含病史、調理紀錄 sessions、方案 packages 等欄位）— 僅登入的調理師
+    // 用 {document=**} 沿用後台原本的遞迴寫法，確保不影響任何現有結構。
+    match /clients/{document=**} {
+      allow read, write: if signedIn();
+    }
+
+    // 預約、班表、綁定連結 — 僅登入的調理師可直接操作；
+    // 客戶端的讀寫都走 Worker（服務帳號），不受此限。
+    match /bookings/{document=**}         { allow read, write: if signedIn(); }
+    match /scheduleTemplate/{document=**} { allow read, write: if signedIn(); }
+    match /scheduleOverride/{document=**} { allow read, write: if signedIn(); }
+    match /bindTokens/{document=**}       { allow read, write: if signedIn(); }
+
+    // 機密設定（推播密鑰等）— 僅登入的調理師可「讀」；寫入只能透過 Firebase Console（後台網頁不可改）
+    match /config/{document=**} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // 其餘一律拒絕
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

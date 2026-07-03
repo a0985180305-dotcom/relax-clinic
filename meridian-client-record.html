@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>經絡調理｜客戶紀錄工具</title>
+<style>
+:root {
+  --bg: #f6f4ef;
+  --surface: #fffdf9;
+  --surface2: #eee9df;
+  --surface3: #f8faf7;
+  --border: #ded7ca;
+  --border2: #bfb6a8;
+  --text: #1f1c18;
+  --text2: #655f56;
+  --text3: #938b7f;
+  --green: #2f7d65;
+  --green2: #e7f3ee;
+  --green3: #acd4c6;
+  --blue: #326e9f;
+  --blue2: #e7f0f8;
+  --amber: #9e640f;
+  --amber2: #fff3dc;
+  --red: #b83429;
+  --red2: #fbebe8;
+  --shadow: 0 1px 3px rgba(28, 22, 13, .08), 0 6px 18px rgba(28, 22, 13, .05);
+  --radius: 8px;
+  --radius-sm: 6px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+body {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Noto Sans TC", "Microsoft JhengHei", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+button, input, textarea, select { font: inherit; }
+button { cursor: pointer; }
+
+.app {
+  width: 100%;
+  max-width: 520px;
+  min-height: 100vh;
+  margin: 0 auto;
+  background: var(--bg);
+}
+
+.screen { display: none; }
+.screen.active { display: block; }
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 58px;
+  padding: 10px 14px;
+  background: rgba(255, 253, 249, .96);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(10px);
+}
+
+.topbar h1 {
+  flex: 1;
+  min-width: 0;
+  font-size: 17px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.brand-title { font-size: 17px; font-weight: 700; }
+.brand-sub { color: var(--text3); font-size: 12px; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  gap: 5px;
+  padding: 7px 12px;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.btn:active { transform: scale(.98); }
+.btn-primary { background: var(--green); border-color: var(--green); color: white; }
+.btn-primary:hover { background: #276a56; }
+.btn-soft { background: var(--green2); border-color: var(--green3); color: var(--green); }
+.btn-danger { background: var(--red2); border-color: #e3b6ae; color: var(--red); }
+.btn-ghost { background: transparent; border-color: transparent; }
+.btn-sm { min-height: 32px; padding: 6px 10px; font-size: 13px; }
+.btn-icon { width: 36px; padding: 0; }
+
+.toolbar {
+  display: grid;
+  grid-template-columns: 1fr 124px;
+  gap: 8px;
+  padding: 12px 14px 8px;
+}
+
+.backup-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 0 14px 10px;
+}
+
+.list-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 4px 14px 22px;
+}
+
+.panel {
+  margin: 12px 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.notice {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text2);
+  font-size: 13px;
+}
+
+.notice.warn {
+  border-color: #e0bd7a;
+  background: var(--amber2);
+  color: #6f470d;
+}
+
+.notice.danger {
+  border-color: #e3b6ae;
+  background: var(--red2);
+  color: var(--red);
+}
+
+.client-card {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  text-align: left;
+}
+
+.avatar, .profile-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid var(--green3);
+  border-radius: 50%;
+  background: var(--green2);
+  color: var(--green);
+  font-weight: 700;
+}
+
+.avatar { width: 44px; height: 44px; }
+.profile-avatar { width: 58px; height: 58px; font-size: 20px; }
+
+.client-main { min-width: 0; }
+.client-name { font-weight: 650; font-size: 15px; }
+.client-meta, .client-sub {
+  margin-top: 2px;
+  color: var(--text3);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-pill, .tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface2);
+  color: var(--text2);
+  font-size: 12px;
+}
+
+.status-pill.todo { background: var(--amber2); border-color: #dfc086; color: var(--amber); }
+.status-pill.done { background: var(--green2); border-color: var(--green3); color: var(--green); }
+.status-pill.paused { background: var(--red2); border-color: #e3b6ae; color: var(--red); }
+
+.empty-state {
+  padding: 42px 18px;
+  color: var(--text3);
+  text-align: center;
+}
+
+.empty-state strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text2);
+  font-weight: 600;
+}
+
+.section {
+  padding: 15px 14px;
+}
+
+.section + .section { padding-top: 0; }
+
+.divider {
+  height: 8px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: #eee9df;
+}
+
+.section-label {
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text3);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: .08em;
+}
+
+.field { margin-bottom: 13px; }
+.field:last-child { margin-bottom: 0; }
+.field label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--text2);
+  font-size: 13px;
+}
+
+.field input, .field textarea, .field select, .toolbar input, .toolbar select {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 11px;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.field textarea {
+  min-height: 78px;
+  resize: vertical;
+}
+
+.field input:focus, .field textarea:focus, .field select:focus, .toolbar input:focus, .toolbar select:focus {
+  outline: none;
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(47, 125, 101, .12);
+}
+
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.chip {
+  min-height: 31px;
+  padding: 5px 11px;
+  border: 1px solid var(--border2);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text2);
+  font-size: 13px;
+}
+
+.chip.on {
+  border-color: var(--green);
+  background: var(--green);
+  color: white;
+}
+
+.chip.display {
+  min-height: 26px;
+  padding: 3px 9px;
+  border-color: var(--green3);
+  background: var(--green2);
+  color: var(--green);
+  pointer-events: none;
+}
+
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 18px 14px;
+  background: var(--surface);
+}
+
+.profile-name { font-size: 20px; font-weight: 700; }
+.profile-sub { margin-top: 2px; color: var(--text3); font-size: 13px; }
+
+.caution-box {
+  position: sticky;
+  top: 58px;
+  z-index: 12;
+  margin: 0;
+  border-left: none;
+  border-right: none;
+  border-radius: 0;
+}
+
+.info-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.info-table tr { border-bottom: 1px solid var(--border); }
+.info-table tr:last-child { border-bottom: none; }
+.info-table td {
+  padding: 8px 0;
+  font-size: 13px;
+  vertical-align: top;
+}
+.info-table td:first-child {
+  width: 112px;
+  padding-right: 10px;
+  color: var(--text3);
+}
+
+.note-block { margin-bottom: 11px; }
+.note-block:last-child { margin-bottom: 0; }
+.note-label { margin-bottom: 3px; color: var(--text3); font-size: 12px; }
+.note-text { color: var(--text); font-size: 13px; white-space: pre-wrap; }
+
+.session-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.session-card {
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.session-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.session-num { color: var(--text3); font-size: 12px; }
+.session-date { font-weight: 650; }
+
+.scores {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.score-box {
+  min-width: 0;
+  padding: 7px 4px;
+  border-radius: var(--radius-sm);
+  background: var(--surface2);
+  text-align: center;
+}
+
+.score-lbl {
+  color: var(--text3);
+  font-size: 10px;
+  line-height: 1.2;
+}
+.score-val {
+  margin-top: 1px;
+  font-size: 17px;
+  font-weight: 700;
+}
+.s-good { color: var(--green); }
+.s-mid { color: var(--amber); }
+.s-bad { color: var(--red); }
+
+.next-box {
+  margin-top: 10px;
+  padding: 10px 11px;
+  border: 1px solid var(--green3);
+  border-radius: var(--radius-sm);
+  background: var(--green2);
+}
+
+.sticky-add {
+  position: sticky;
+  bottom: 0;
+  padding: 11px 14px;
+  border-top: 1px solid var(--border);
+  background: rgba(246, 244, 239, .96);
+  backdrop-filter: blur(10px);
+}
+
+.alert {
+  display: none;
+  margin: 12px 14px 0;
+}
+.alert.show { display: block; }
+
+.hidden-file {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (max-width: 380px) {
+  body { font-size: 14px; }
+  .toolbar { grid-template-columns: 1fr; }
+  .backup-row { grid-template-columns: 1fr; }
+  .row2 { grid-template-columns: 1fr; }
+  .scores { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <div id="s-list" class="screen active">
+    <div class="topbar">
+      <div class="brand">
+        <div class="brand-title">客戶紀錄</div>
+        <div class="brand-sub">經絡調理追蹤工具</div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="showNewClient()">＋ 新增</button>
+    </div>
+
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="搜尋姓名、編號、重點..." oninput="renderList()">
+      <select id="sortMode" onchange="renderList()">
+        <option value="recent">最近調理</option>
+        <option value="name">姓名排序</option>
+        <option value="follow">待追蹤優先</option>
+      </select>
+    </div>
+
+    <div class="backup-row">
+      <button class="btn btn-soft btn-sm" onclick="exportJSON()">匯出 JSON</button>
+      <button class="btn btn-soft btn-sm" onclick="exportCSV()">匯出 CSV</button>
+      <button class="btn btn-sm" onclick="document.getElementById('import-file').click()">匯入備份</button>
+      <input id="import-file" class="hidden-file" type="file" accept="application/json,.json" onchange="importJSON(event)">
+    </div>
+
+    <div class="list-wrap">
+      <div class="notice warn">資料目前儲存在這台裝置的瀏覽器中。正式使用前，請養成定期匯出 JSON 備份，或後續改接 Google Sheets。</div>
+      <div id="client-list"></div>
+    </div>
+  </div>
+
+  <div id="s-new-client" class="screen">
+    <div class="topbar">
+      <button class="btn btn-icon btn-ghost" onclick="goHome()">←</button>
+      <h1>新增客戶</h1>
+      <button class="btn btn-primary btn-sm" onclick="saveNewClient()">儲存</button>
+    </div>
+    <div id="nc-alert" class="alert notice danger">請至少填寫客戶姓名，並確認已取得保存資料同意。</div>
+
+    <div class="section">
+      <div class="section-label">基本資料</div>
+      <div class="field"><label>客戶編號</label><input id="nc-id" readonly></div>
+      <div class="field"><label>姓名 *</label><input id="nc-name" autocomplete="off" placeholder="客戶姓名"></div>
+      <div class="row2">
+        <div class="field">
+          <label>性別</label>
+          <select id="nc-gender"><option value="">未填</option><option>女</option><option>男</option><option>其他</option></select>
+        </div>
+        <div class="field"><label>生日</label><input id="nc-birthday" type="date"></div>
+      </div>
+      <div class="field"><label>聯絡方式</label><input id="nc-contact" placeholder="電話 / LINE"></div>
+      <div class="field"><label>緊急聯絡人</label><input id="nc-emergency" placeholder="姓名 / 關係 / 電話"></div>
+      <div class="field"><label>職業 / 生活型態</label><input id="nc-job" placeholder="例：久坐辦公室、教師、勞動工作"></div>
+      <div class="field"><label>主要改善目標</label><textarea id="nc-goals" placeholder="例：改善肩頸緊繃、睡眠品質、腰部活動度..."></textarea></div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="section">
+      <div class="section-label">健康背景</div>
+      <div class="field"><label>病史 / 手術史</label><textarea id="nc-history" placeholder="例：高血壓、2020 年膝蓋手術..."></textarea></div>
+      <div class="field"><label>目前用藥</label><input id="nc-meds" placeholder="若無請填「無」"></div>
+      <div class="field"><label>禁忌 / 特殊注意事項</label><textarea id="nc-contra" placeholder="例：孕期、骨質疏鬆、特定部位需避免施力..."></textarea></div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="section">
+      <div class="section-label">體質評估（初診）</div>
+      <div class="field">
+        <label>主要體質傾向</label>
+        <div class="chip-row" id="nc-constitution">
+          <button type="button" class="chip" onclick="toggleChip(this)">氣滯</button>
+          <button type="button" class="chip" onclick="toggleChip(this)">血瘀</button>
+          <button type="button" class="chip" onclick="toggleChip(this)">陽虛</button>
+          <button type="button" class="chip" onclick="toggleChip(this)">陰虛</button>
+          <button type="button" class="chip" onclick="toggleChip(this)">痰濕</button>
+          <button type="button" class="chip" onclick="toggleChip(this)">氣虛</button>
+          <button type="button" class="chip" onclick="toggleChip(this)">肝鬱</button>
+          <button type="button" class="chip" onclick="toggleChip(this)">濕熱</button>
+        </div>
+      </div>
+      <div class="field"><label>調理師初評小結</label><textarea id="nc-assessment" placeholder="整體體質判斷、主要病灶方向、施作觀察..."></textarea></div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="section">
+      <div class="section-label">調理重點方向</div>
+      <div class="field"><label>優先處理部位 / 經絡</label><textarea id="nc-meridian" placeholder="例：膀胱經背段、肝膽經下肢段、腰薦椎周圍..."></textarea></div>
+      <div class="field"><label>根本調理方向</label><textarea id="nc-direction" placeholder="例：疏肝理氣為主，兼顧補腎陽、改善下焦循環..."></textarea></div>
+      <div class="field">
+        <label><input id="nc-consent" type="checkbox" style="width:auto;min-height:auto;margin-right:6px;">已取得客戶同意保存調理紀錄</label>
+      </div>
+    </div>
+  </div>
+
+  <div id="s-profile" class="screen">
+    <div class="topbar">
+      <button class="btn btn-icon btn-ghost" onclick="goHome()">←</button>
+      <h1 id="profile-title"></h1>
+      <button class="btn btn-danger btn-sm" onclick="deleteClient()">刪除</button>
+    </div>
+    <div id="profile-content"></div>
+    <div class="section">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;">
+        <div class="section-label" style="margin:0;border:none;padding:0;">調理紀錄</div>
+        <button class="btn btn-primary btn-sm" onclick="showNewSession()">＋ 新增一筆</button>
+      </div>
+      <div id="session-list" class="session-wrap"></div>
+    </div>
+  </div>
+
+  <div id="s-new-session" class="screen">
+    <div class="topbar">
+      <button class="btn btn-icon btn-ghost" onclick="showProfile(currentClientId)">←</button>
+      <h1>新增調理紀錄</h1>
+      <button class="btn btn-primary btn-sm" onclick="saveSession()">儲存</button>
+    </div>
+
+    <div class="section">
+      <div class="section-label">紀錄資訊</div>
+      <div class="row2">
+        <div class="field"><label>調理日期</label><input id="ns-date" type="date"></div>
+        <div class="field"><label>追蹤狀態</label><select id="ns-status"><option>待追蹤</option><option>已預約</option><option>已完成</option><option>暫停</option></select></div>
+      </div>
+      <div class="field"><label>客戶反映（上次調理後的變化）</label><textarea id="ns-feedback" placeholder="例：背部輕鬆許多、睡眠改善、痠痛有減少..."></textarea></div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="section">
+      <div class="section-label">調理前評估</div>
+      <div class="field"><label>今日主訴</label><textarea id="ns-complaint" placeholder="今天最不舒服的部位 / 當下的身體狀態..."></textarea></div>
+      <div class="row2">
+        <div class="field"><label>疼痛感（前）0-10</label><input id="ns-pb" type="number" min="0" max="10" placeholder="分"></div>
+        <div class="field"><label>緊繃感（前）0-10</label><input id="ns-tb" type="number" min="0" max="10" placeholder="分"></div>
+      </div>
+      <div class="field"><label>舌象觀察</label><input id="ns-tongue" placeholder="例：舌淡紅、苔薄白微膩..."></div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="section">
+      <div class="section-label">本次施作</div>
+      <div class="field"><label>操作部位 / 經絡</label><textarea id="ns-areas" placeholder="例：膀胱經全段、肩頸斜方肌、膽經大腿段..."></textarea></div>
+      <div class="field">
+        <label>使用手法</label>
+        <div class="chip-row" id="ns-techniques">
+          <button type="button" class="chip" onclick="toggleChip(this)">撥筋</button>
+          <button type="button" class="chip" onclick="toggleChip(this)">推拿</button>
+          <button type="button" class="chip" onclick="toggleChip(this)">熱敷</button>
+          <button type="button" class="chip" onclick="toggleChip(this)">拍打</button>
+          <button type="button" class="chip" onclick="toggleChip(this)">拔罐</button>
+          <button type="button" class="chip" onclick="toggleChip(this)">刮痧</button>
+          <button type="button" class="chip" onclick="toggleChip(this)">精油</button>
+        </div>
+      </div>
+      <div class="field"><label>特別發現（結節、反應明顯穴位等）</label><textarea id="ns-findings" placeholder="例：L3 附近有明顯結節、膽經大腿段反應強烈..."></textarea></div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="section">
+      <div class="section-label">調理後評估</div>
+      <div class="row2">
+        <div class="field"><label>疼痛感（後）0-10</label><input id="ns-pa" type="number" min="0" max="10" placeholder="分"></div>
+        <div class="field"><label>緊繃感（後）0-10</label><input id="ns-ta" type="number" min="0" max="10" placeholder="分"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>睡眠品質 1-5</label><input id="ns-sleep" type="number" min="1" max="5" placeholder="分"></div>
+        <div class="field"><label>精神狀態 1-5</label><input id="ns-energy" type="number" min="1" max="5" placeholder="分"></div>
+      </div>
+      <div class="field"><label>整體改善感 0-10</label><input id="ns-overall" type="number" min="0" max="10" placeholder="0 代表無改善，10 代表明顯改善"></div>
+      <div class="field"><label>客戶即時感受</label><textarea id="ns-response" placeholder="例：腰部明顯輕鬆、微痠感、感覺發熱..."></textarea></div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="section">
+      <div class="section-label">下次提醒</div>
+      <div class="field"><label>下次預約日期</label><input id="ns-next-date" type="date"></div>
+      <div class="field"><label>居家保養建議</label><textarea id="ns-homecare" placeholder="例：每日熱敷腰部 15 分鐘、避免久坐、多補水..."></textarea></div>
+      <div class="field"><label>下次調理重點</label><textarea id="ns-next" placeholder="例：加強下焦循環、增加肝經段施作..."></textarea></div>
+    </div>
+  </div>
+</div>
+
+<script>
+var STORAGE_KEY = 'meridian_v3';
+var LEGACY_KEY = 'meridian_v2';
+var clients = loadClients();
+var currentClientId = null;
+
+function loadClients() {
+  var raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_KEY);
+  if (!raw) return [];
+  try {
+    var parsed = JSON.parse(raw);
+    if (parsed.clients && Array.isArray(parsed.clients)) return normalizeClients(parsed.clients);
+    if (Array.isArray(parsed)) return normalizeClients(parsed);
+  } catch (err) {
+    console.warn('Unable to load saved records', err);
+  }
+  return [];
+}
+
+function normalizeClients(list) {
+  return list.map(function(c, index) {
+    var id = c.id || nextClientId(index + 1);
+    var sessions = Array.isArray(c.sessions) ? c.sessions : [];
+    return {
+      id: id,
+      name: c.name || '',
+      gender: c.gender || '',
+      birthday: c.birthday || '',
+      contact: c.contact || '',
+      emergency: c.emergency || '',
+      job: c.job || '',
+      goals: c.goals || '',
+      history: c.history || '',
+      meds: c.meds || '',
+      contra: c.contra || '',
+      consent: Boolean(c.consent),
+      constitution: Array.isArray(c.constitution) ? c.constitution : splitList(c.constitution),
+      assessment: c.assessment || '',
+      meridian: c.meridian || '',
+      direction: c.direction || '',
+      createdAt: c.createdAt || new Date().toISOString(),
+      sessions: sessions.map(function(s, si) { return normalizeSession(s, id, si + 1); })
+    };
+  });
+}
+
+function normalizeSession(s, clientId, index) {
+  return {
+    id: s.id || clientId + '-S' + String(index).padStart(3, '0'),
+    clientId: clientId,
+    date: s.date || new Date().toISOString().slice(0, 10),
+    feedback: s.feedback || '',
+    complaint: s.complaint || '',
+    pb: s.pb || '',
+    tb: s.tb || '',
+    tongue: s.tongue || '',
+    areas: s.areas || '',
+    techniques: Array.isArray(s.techniques) ? s.techniques : splitList(s.techniques),
+    findings: s.findings || '',
+    pa: s.pa || '',
+    ta: s.ta || '',
+    sleep: s.sleep || '',
+    energy: s.energy || '',
+    overall: s.overall || '',
+    response: s.response || '',
+    homecare: s.homecare || '',
+    next: s.next || '',
+    nextDate: s.nextDate || '',
+    status: s.status || '待追蹤',
+    createdAt: s.createdAt || new Date().toISOString()
+  };
+}
+
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 3, clients: clients }));
+}
+
+function nextClientId(forceNumber) {
+  var max = clients.reduce(function(acc, c) {
+    var match = String(c.id || '').match(/^C(\d+)$/);
+    return match ? Math.max(acc, parseInt(match[1], 10)) : acc;
+  }, 0);
+  var number = forceNumber || max + 1;
+  return 'C' + String(number).padStart(4, '0');
+}
+
+function nextSessionId(client) {
+  return client.id + '-S' + String((client.sessions || []).length + 1).padStart(3, '0');
+}
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function fmt(dateLike) {
+  if (!dateLike) return '';
+  var value = String(dateLike).slice(0, 10);
+  var parts = value.split('-');
+  if (parts.length === 3) return parts[0] + '/' + parts[1] + '/' + parts[2];
+  var d = new Date(dateLike);
+  if (isNaN(d.getTime())) return '';
+  return d.getFullYear() + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0');
+}
+
+function ageFromBirthday(birthday) {
+  if (!birthday) return '';
+  var birth = new Date(birthday);
+  if (isNaN(birth.getTime())) return '';
+  var now = new Date();
+  var age = now.getFullYear() - birth.getFullYear();
+  var monthDelta = now.getMonth() - birth.getMonth();
+  if (monthDelta < 0 || (monthDelta === 0 && now.getDate() < birth.getDate())) age -= 1;
+  return age > -1 ? String(age) : '';
+}
+
+function initials(name) {
+  return name ? name.trim().slice(0, 1) : '?';
+}
+
+function splitList(value) {
+  if (!value) return [];
+  return String(value).split(/[、,，]/).map(function(x) { return x.trim(); }).filter(Boolean);
+}
+
+function escapeHTML(value) {
+  return String(value || '').replace(/[&<>"']/g, function(ch) {
+    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+  });
+}
+
+function show(id) {
+  document.querySelectorAll('.screen').forEach(function(screen) { screen.classList.remove('active'); });
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0, 0);
+}
+
+function goHome() {
+  renderList();
+  show('s-list');
+}
+
+function toggleChip(el) {
+  el.classList.toggle('on');
+}
+
+function getChips(containerId) {
+  return Array.from(document.querySelectorAll('#' + containerId + ' .chip.on')).map(function(chip) {
+    return chip.textContent.trim();
+  });
+}
+
+function clearChips(containerId) {
+  document.querySelectorAll('#' + containerId + ' .chip').forEach(function(chip) {
+    chip.classList.remove('on');
+  });
+}
+
+function setChips(containerId, values) {
+  var selected = values || [];
+  document.querySelectorAll('#' + containerId + ' .chip').forEach(function(chip) {
+    chip.classList.toggle('on', selected.indexOf(chip.textContent.trim()) !== -1);
+  });
+}
+
+function lastSession(client) {
+  var sessions = client.sessions || [];
+  return sessions.length ? sessions[sessions.length - 1] : null;
+}
+
+function statusClass(status) {
+  if (status === '已完成' || status === '已預約') return 'done';
+  if (status === '暫停') return 'paused';
+  return 'todo';
+}
+
+function renderList() {
+  var listEl = document.getElementById('client-list');
+  var query = document.getElementById('search').value.trim().toLowerCase();
+  var sortMode = document.getElementById('sortMode').value;
+  var filtered = clients.map(function(client, index) {
+    return { client: client, index: index };
+  }).filter(function(item) {
+    var client = item.client;
+    var haystack = [
+      client.id, client.name, client.contact, client.job, client.goals,
+      client.meridian, client.direction, client.contra
+    ].join(' ').toLowerCase();
+    return !query || haystack.indexOf(query) !== -1;
+  });
+
+  filtered.sort(function(a, b) {
+    if (sortMode === 'name') return a.client.name.localeCompare(b.client.name, 'zh-Hant');
+    if (sortMode === 'follow') {
+      var as = lastSession(a.client);
+      var bs = lastSession(b.client);
+      var aw = as && as.status === '待追蹤' ? 0 : 1;
+      var bw = bs && bs.status === '待追蹤' ? 0 : 1;
+      if (aw !== bw) return aw - bw;
+    }
+    var ad = (lastSession(a.client) || {}).date || a.client.createdAt || '';
+    var bd = (lastSession(b.client) || {}).date || b.client.createdAt || '';
+    return String(bd).localeCompare(String(ad));
+  });
+
+  if (!filtered.length) {
+    listEl.innerHTML = '<div class="empty-state"><strong>目前沒有符合的客戶紀錄</strong><span>點右上角新增，或調整搜尋條件。</span></div>';
+    return;
+  }
+
+  listEl.innerHTML = filtered.map(function(item) {
+    var c = item.client;
+    var latest = lastSession(c);
+    var status = latest ? latest.status : '尚無紀錄';
+    var nextDate = latest && latest.nextDate ? '｜下次 ' + fmt(latest.nextDate) : '';
+    var lastDate = latest ? '最近 ' + fmt(latest.date) : '建檔 ' + fmt(c.createdAt);
+    var age = ageFromBirthday(c.birthday);
+    var meta = [c.id, age ? age + ' 歲' : '', c.job].filter(Boolean).join('｜');
+    return '<button class="client-card" onclick="showProfile(' + item.index + ')">' +
+      '<div class="avatar">' + escapeHTML(initials(c.name)) + '</div>' +
+      '<div class="client-main">' +
+        '<div class="client-name">' + escapeHTML(c.name) + '</div>' +
+        '<div class="client-meta">' + escapeHTML(meta || '未填基本資料') + '</div>' +
+        '<div class="client-sub">' + escapeHTML(lastDate + nextDate) + '</div>' +
+      '</div>' +
+      '<span class="status-pill ' + statusClass(status) + '">' + escapeHTML(status) + '</span>' +
+    '</button>';
+  }).join('');
+}
+
+function showNewClient() {
+  ['nc-name','nc-birthday','nc-contact','nc-emergency','nc-job','nc-goals','nc-history','nc-meds','nc-contra','nc-assessment','nc-meridian','nc-direction'].forEach(function(id) {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('nc-id').value = nextClientId();
+  document.getElementById('nc-gender').value = '';
+  document.getElementById('nc-consent').checked = false;
+  clearChips('nc-constitution');
+  document.getElementById('nc-alert').classList.remove('show');
+  show('s-new-client');
+}
+
+function saveNewClient() {
+  var name = document.getElementById('nc-name').value.trim();
+  var consent = document.getElementById('nc-consent').checked;
+  if (!name || !consent) {
+    document.getElementById('nc-alert').classList.add('show');
+    return;
+  }
+  var client = {
+    id: document.getElementById('nc-id').value || nextClientId(),
+    name: name,
+    gender: document.getElementById('nc-gender').value,
+    birthday: document.getElementById('nc-birthday').value,
+    contact: document.getElementById('nc-contact').value.trim(),
+    emergency: document.getElementById('nc-emergency').value.trim(),
+    job: document.getElementById('nc-job').value.trim(),
+    goals: document.getElementById('nc-goals').value.trim(),
+    history: document.getElementById('nc-history').value.trim(),
+    meds: document.getElementById('nc-meds').value.trim(),
+    contra: document.getElementById('nc-contra').value.trim(),
+    consent: consent,
+    constitution: getChips('nc-constitution'),
+    assessment: document.getElementById('nc-assessment').value.trim(),
+    meridian: document.getElementById('nc-meridian').value.trim(),
+    direction: document.getElementById('nc-direction').value.trim(),
+    createdAt: new Date().toISOString(),
+    sessions: []
+  };
+  clients.push(client);
+  save();
+  showProfile(clients.length - 1);
+}
+
+function deleteClient() {
+  var client = clients[currentClientId];
+  if (!client) return;
+  if (!confirm('確定要刪除「' + client.name + '」與所有調理紀錄嗎？此動作無法復原。')) return;
+  clients.splice(currentClientId, 1);
+  currentClientId = null;
+  save();
+  goHome();
+}
+
+function showProfile(index) {
+  currentClientId = index;
+  var c = clients[index];
+  if (!c) return goHome();
+  document.getElementById('profile-title').textContent = c.name;
+  var age = ageFromBirthday(c.birthday);
+  var caution = c.contra ? '<div class="notice danger caution-box"><strong>禁忌 / 特殊注意：</strong>' + escapeHTML(c.contra) + '</div>' : '';
+  var constitution = c.constitution && c.constitution.length
+    ? '<div class="note-block"><div class="note-label">體質傾向</div><div class="chip-row">' + c.constitution.map(function(x) { return '<span class="chip display">' + escapeHTML(x) + '</span>'; }).join('') + '</div></div>'
+    : '';
+  document.getElementById('profile-content').innerHTML =
+    '<div class="profile-header">' +
+      '<div class="profile-avatar">' + escapeHTML(initials(c.name)) + '</div>' +
+      '<div><div class="profile-name">' + escapeHTML(c.name) + '</div>' +
+      '<div class="profile-sub">' + escapeHTML([c.id, c.gender, age ? age + ' 歲' : '', c.job].filter(Boolean).join('｜')) + '</div></div>' +
+    '</div>' + caution + '<div class="divider"></div>' +
+    '<div class="section"><div class="section-label">基本資料</div><table class="info-table">' +
+      row('生日', c.birthday ? fmt(c.birthday) : '') +
+      row('聯絡方式', c.contact) +
+      row('緊急聯絡人', c.emergency) +
+      row('主要目標', c.goals) +
+      row('建檔日期', fmt(c.createdAt)) +
+      row('同意保存', c.consent ? '已取得同意' : '未確認') +
+    '</table></div><div class="divider"></div>' +
+    '<div class="section"><div class="section-label">健康背景</div><table class="info-table">' +
+      row('病史/手術史', c.history) +
+      row('目前用藥', c.meds) +
+    '</table></div><div class="divider"></div>' +
+    '<div class="section"><div class="section-label">體質與調理方向</div>' +
+      constitution +
+      note('初評小結', c.assessment) +
+      note('優先部位/經絡', c.meridian) +
+      note('根本方向', c.direction) +
+    '</div><div class="divider"></div>';
+  renderSessions();
+  show('s-profile');
+}
+
+function row(label, value) {
+  return value ? '<tr><td>' + escapeHTML(label) + '</td><td>' + escapeHTML(value) + '</td></tr>' : '';
+}
+
+function note(label, value) {
+  return value ? '<div class="note-block"><div class="note-label">' + escapeHTML(label) + '</div><div class="note-text">' + escapeHTML(value) + '</div></div>' : '';
+}
+
+function renderSessions() {
+  var c = clients[currentClientId];
+  var el = document.getElementById('session-list');
+  var sessions = c && c.sessions ? c.sessions : [];
+  if (!sessions.length) {
+    el.innerHTML = '<div class="empty-state"><strong>尚無調理紀錄</strong><span>點「新增一筆」記錄第一次調理。</span></div>';
+    return;
+  }
+  el.innerHTML = sessions.slice().reverse().map(function(s, reverseIndex) {
+    var index = sessions.length - 1 - reverseIndex;
+    return '<div class="session-card">' +
+      '<div class="session-head">' +
+        '<div><div class="session-num">第 ' + (index + 1) + ' 次｜' + escapeHTML(s.id) + '</div><div class="session-date">' + escapeHTML(fmt(s.date)) + '</div></div>' +
+        '<span class="status-pill ' + statusClass(s.status) + '">' + escapeHTML(s.status) + '</span>' +
+      '</div>' +
+      scoreHTML(s) +
+      note('上次回報', s.feedback) +
+      note('今日主訴', s.complaint) +
+      note('舌象觀察', s.tongue) +
+      note('操作部位 / 經絡', s.areas) +
+      chipsNote('使用手法', s.techniques) +
+      note('特別發現', s.findings) +
+      note('客戶即時感受', s.response) +
+      ((s.homecare || s.next || s.nextDate) ? '<div class="next-box">' +
+        note('下次預約', s.nextDate ? fmt(s.nextDate) : '') +
+        note('居家保養建議', s.homecare) +
+        note('下次調理重點', s.next) +
+      '</div>' : '') +
+    '</div>';
+  }).join('');
+}
+
+function chipsNote(label, values) {
+  if (!values || !values.length) return '';
+  return '<div class="note-block"><div class="note-label">' + escapeHTML(label) + '</div><div class="chip-row">' +
+    values.map(function(x) { return '<span class="chip display">' + escapeHTML(x) + '</span>'; }).join('') +
+  '</div></div>';
+}
+
+function scoreHTML(s) {
+  var items = [
+    ['痛前', s.pb, 10, false],
+    ['痛後', s.pa, 10, false],
+    ['緊後', s.ta, 10, false],
+    ['睡眠', s.sleep, 5, true],
+    ['改善', s.overall, 10, true]
+  ].filter(function(item) { return item[1] !== '' && item[1] !== undefined && item[1] !== null; });
+  if (!items.length) return '';
+  return '<div class="scores">' + items.map(function(item) {
+    var value = parseInt(item[1], 10);
+    return '<div class="score-box"><div class="score-lbl">' + escapeHTML(item[0]) + '</div><div class="score-val ' + scoreColor(value, item[2], item[3]) + '">' + escapeHTML(value) + '</div></div>';
+  }).join('') + '</div>';
+}
+
+function scoreColor(value, max, higherIsBetter) {
+  if (isNaN(value)) return '';
+  var ratio = value / max;
+  if (higherIsBetter) return ratio >= .7 ? 's-good' : ratio >= .4 ? 's-mid' : 's-bad';
+  return ratio <= .3 ? 's-good' : ratio <= .6 ? 's-mid' : 's-bad';
+}
+
+function showNewSession() {
+  ['ns-feedback','ns-complaint','ns-pb','ns-tb','ns-tongue','ns-areas','ns-findings','ns-pa','ns-ta','ns-sleep','ns-energy','ns-overall','ns-response','ns-homecare','ns-next','ns-next-date'].forEach(function(id) {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('ns-date').value = today();
+  document.getElementById('ns-status').value = '待追蹤';
+  clearChips('ns-techniques');
+  show('s-new-session');
+}
+
+function saveSession() {
+  var c = clients[currentClientId];
+  if (!c) return goHome();
+  c.sessions.push({
+    id: nextSessionId(c),
+    clientId: c.id,
+    date: document.getElementById('ns-date').value || today(),
+    status: document.getElementById('ns-status').value,
+    feedback: document.getElementById('ns-feedback').value.trim(),
+    complaint: document.getElementById('ns-complaint').value.trim(),
+    pb: document.getElementById('ns-pb').value,
+    tb: document.getElementById('ns-tb').value,
+    tongue: document.getElementById('ns-tongue').value.trim(),
+    areas: document.getElementById('ns-areas').value.trim(),
+    techniques: getChips('ns-techniques'),
+    findings: document.getElementById('ns-findings').value.trim(),
+    pa: document.getElementById('ns-pa').value,
+    ta: document.getElementById('ns-ta').value,
+    sleep: document.getElementById('ns-sleep').value,
+    energy: document.getElementById('ns-energy').value,
+    overall: document.getElementById('ns-overall').value,
+    response: document.getElementById('ns-response').value.trim(),
+    homecare: document.getElementById('ns-homecare').value.trim(),
+    next: document.getElementById('ns-next').value.trim(),
+    nextDate: document.getElementById('ns-next-date').value,
+    createdAt: new Date().toISOString()
+  });
+  save();
+  showProfile(currentClientId);
+}
+
+function exportPayload() {
+  var flatClients = clients.map(function(c) {
+    var copy = Object.assign({}, c);
+    delete copy.sessions;
+    return copy;
+  });
+  var sessions = clients.flatMap(function(c) {
+    return (c.sessions || []).map(function(s) {
+      return Object.assign({}, s, { clientId: c.id });
+    });
+  });
+  return {
+    version: 3,
+    exportedAt: new Date().toISOString(),
+    clients: flatClients,
+    sessions: sessions
+  };
+}
+
+function exportJSON() {
+  download('經絡調理客戶紀錄備份_' + today() + '.json', JSON.stringify(exportPayload(), null, 2), 'application/json;charset=utf-8');
+}
+
+function exportCSV() {
+  var payload = exportPayload();
+  download('經絡調理客戶主檔_' + today() + '.csv', toCSV(payload.clients), 'text/csv;charset=utf-8');
+  download('經絡調理調理紀錄_' + today() + '.csv', toCSV(payload.sessions), 'text/csv;charset=utf-8');
+}
+
+function toCSV(rows) {
+  if (!rows.length) return '';
+  var headers = Array.from(rows.reduce(function(set, row) {
+    Object.keys(row).forEach(function(key) { set.add(key); });
+    return set;
+  }, new Set()));
+  return [headers].concat(rows.map(function(row) {
+    return headers.map(function(key) {
+      var value = Array.isArray(row[key]) ? row[key].join('、') : (row[key] == null ? '' : row[key]);
+      return '"' + String(value).replace(/"/g, '""') + '"';
+    });
+  })).map(function(cols) { return cols.join(','); }).join('\n');
+}
+
+function download(filename, text, mime) {
+  var blob = new Blob(['\uFEFF' + text], { type: mime });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+}
+
+function importJSON(event) {
+  var file = event.target.files && event.target.files[0];
+  event.target.value = '';
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function() {
+    try {
+      var data = JSON.parse(reader.result);
+      var nextClients = [];
+      if (data.clients && data.sessions) {
+        var sessionsByClient = data.sessions.reduce(function(acc, session) {
+          var id = session.clientId;
+          if (!acc[id]) acc[id] = [];
+          acc[id].push(session);
+          return acc;
+        }, {});
+        nextClients = data.clients.map(function(client) {
+          return Object.assign({}, client, { sessions: sessionsByClient[client.id] || [] });
+        });
+      } else if (Array.isArray(data.clients)) {
+        nextClients = data.clients;
+      } else if (Array.isArray(data)) {
+        nextClients = data;
+      } else {
+        throw new Error('格式不支援');
+      }
+      if (!confirm('匯入會覆蓋目前瀏覽器中的資料。確定要匯入這份備份嗎？')) return;
+      clients = normalizeClients(nextClients);
+      save();
+      renderList();
+      alert('匯入完成，共 ' + clients.length + ' 位客戶。');
+    } catch (err) {
+      alert('匯入失敗：請確認是此工具匯出的 JSON 備份。');
+      console.error(err);
+    }
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+save();
+renderList();
+</script>
+</body>
+</html>
