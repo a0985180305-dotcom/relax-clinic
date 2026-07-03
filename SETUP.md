@@ -61,12 +61,14 @@ wrangler deploy
 
 ## Step 5 — 部署客戶端頁（booking.html）
 
-最簡單用 **Cloudflare Pages**（免費、HTTPS）：
+> ✅ **實際採用：GitHub Pages**（與 index.html 同一個 repo、同網域，`git push` 即部署），線上網址以 `CLAUDE.md` 的事實來源對照表為準。以下 Cloudflare Pages 為當初評估的替代方案，留作參考：
+
+替代方案 **Cloudflare Pages**（免費、HTTPS）：
 1. Cloudflare Dashboard → **Workers & Pages → Create → Pages → Upload assets**。
 2. 上傳 `booking.html`（可連同其他檔），取得網址，例如 `https://relax-clinic.pages.dev/booking.html`。
    - 或你現有放 `index.html` 的空間（GitHub Pages 等）也可以，同網域即可。
 3. 回填設定：
-   - `booking.html` 第 ~165 行 `WORKER_URL` ← 改成 Step4 的 Worker 網址。
+   - `booking.html`：搜尋 `const WORKER_URL` 那一行 ← 改成 Step4 的 Worker 網址（行號會隨改版漂移，一律用搜尋定位）。
    - `wrangler.toml` 的 `ALLOWED_ORIGIN` ← 改成這個 Pages 網域（例如 `https://relax-clinic.pages.dev`），再 `wrangler deploy` 一次。
 
 ## Step 6 — 建立 LIFF app
@@ -77,7 +79,7 @@ wrangler deploy
    - Size：**Full**
    - Scopes：勾 `profile`、`openid`
 3. 建立後得到 **LIFF ID**（像 `1660xxxxxx-xxxxxxxx`）。
-4. 回填：`booking.html` 第 ~164 行 `LIFF_ID` ← 填這個值，重新上傳 booking.html。
+4. 回填：`booking.html`：搜尋 `const LIFF_ID` 那一行 ← 填這個值（就在 `const WORKER_URL` 旁邊），重新部署 booking.html。
 5. 確認 `LINE_CHANNEL_ID`（Step3）與此 LIFF 所屬 channel 一致；若用 LINE Login channel，請把 Worker 的 `LINE_CHANNEL_ID` 改成 Login channel 的 Channel ID。
 
 ## Step 7 — 圖文選單加「線上預約」
