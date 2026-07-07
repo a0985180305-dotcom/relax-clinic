@@ -65,6 +65,7 @@ button,input,select{font:inherit;}button{cursor:pointer;}
 .bk-date{font-weight:650;}.bk-sub{font-size:12px;color:var(--text3);margin-top:2px;}
 .pill{display:inline-flex;align-items:center;min-height:24px;padding:3px 9px;border-radius:999px;font-size:12px;border:1px solid var(--teal3);background:var(--teal2);color:var(--teal);}
 .pill.declined{border-color:#e3b6ae;background:var(--red2);color:var(--red);}
+.pill.pending{border-color:#e0bd7a;background:var(--amber2);color:var(--amber);}
 .tag{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;margin-left:6px;}
 .tag.glan{background:var(--blue2);color:var(--blue);}.tag.xuan{background:var(--pink2);color:var(--pink);}
 .empty{padding:40px 20px;text-align:center;color:var(--text3);}
@@ -107,8 +108,8 @@ button,input,select{font:inherit;}button{cursor:pointer;}
     <!-- 預約 -->
     <div id="s-book" class="screen on">
       <div class="ther-row">
-        <button class="ther-btn glan on" id="tb-glan" onclick="pickTher('glan')">調理師 鈞</button>
-        <button class="ther-btn xuan" id="tb-xuan" onclick="pickTher('xuan')">調理師 萱</button>
+        <button class="ther-btn glan on" id="tb-glan" onclick="pickTher('glan')">神藏</button>
+        <button class="ther-btn xuan" id="tb-xuan" onclick="pickTher('xuan')">神庭</button>
       </div>
       <div id="avail"></div>
       <div class="sticky-cta" id="book-cta" style="display:none">
@@ -138,7 +139,7 @@ button,input,select{font:inherit;}button{cursor:pointer;}
 // ══════════════════ 設定（部署前填入）══════════════════
 const LIFF_ID = "2010520705-60EHkpbz";                           // ← LINE Developers 建立 LIFF 後填入
 const WORKER_URL = "https://booking-api.a0985180305.workers.dev"; // ← 部署 booking-worker.js 後的網址
-const THERAPIST_LABEL = { glan: '鈞', xuan: '萱' };
+const THERAPIST_LABEL = { glan: '神藏', xuan: '神庭' }; // 對客顯示代號（鈞=神藏、萱=神庭）
 const DOW_LABEL = ['日','一','二','三','四','五','六'];
 // ════════════════════════════════════════════════════════
 
@@ -274,7 +275,7 @@ async function doBook() {
     await api('book', { therapist: selSlot.therapist, start: selSlot.start });
     selSlot = null;
     document.getElementById('book-cta').style.display = 'none';
-    alertOk('預約成功！可在「我的預約」查看。');
+    alertOk('已收到您的預約申請，確認後將另行通知您 🙏');
     await loadAvailability();
     goTab('my');
   } catch (e) {
@@ -321,14 +322,18 @@ async function renderMyBookings() {
       const tname = THERAPIST_LABEL[b.therapist] || '';
       const tcls = b.therapist === 'glan' ? 'glan' : 'xuan';
       const declined = b.status === 'declined';
+      const pending = b.status === 'pending';
       return `<div class="bk">
         <div>
           <div class="bk-date">${d.getMonth()+1}/${d.getDate()}（${DOW_LABEL[d.getDay()]}）${pad(d.getHours())}:${pad(d.getMinutes())}<span class="tag ${tcls}">${tname}</span></div>
-          <div class="bk-sub">${declined ? '調理師暫時無法接受此時段' : '已預約，期待見到您'}</div>
+          <div class="bk-sub">${declined ? '很抱歉，此時段暫時無法安排' : pending ? '已送出申請，確認後會通知您' : '已確認，期待見到您'}</div>
         </div>
         ${declined
           ? '<span class="pill declined">未成立</span>'
-          : `<button class="btn btn-ghost" style="width:auto;min-height:38px;padding:8px 12px;font-size:13px" onclick="doCancel('${b.bookingId}')">取消</button>`}
+          : `<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+              <span class="pill ${pending ? 'pending' : ''}">${pending ? '待確認' : '已確認'}</span>
+              <button class="btn btn-ghost" style="width:auto;min-height:38px;padding:8px 12px;font-size:13px" onclick="doCancel('${b.bookingId}')">取消</button>
+            </div>`}
       </div>`;
     }).join('');
   } catch (e) {

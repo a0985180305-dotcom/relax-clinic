@@ -31,6 +31,7 @@ const PLAN_CONFIG = {
 };
 
 const SESSION_MINUTES = 50;
+const THERAPIST_NAME = { glan: '神藏', xuan: '神庭' }; // 對客戶顯示用代號（鈞=神藏、萱=神庭）
 
 // ───────────────────────────── 進入點 ─────────────────────────────
 export default {
@@ -58,7 +59,7 @@ export default {
         case 'bindByPhone':   return cors(env, json(await handleBindByPhone(env, userId, body.phone, body.name)));
         case 'bindByToken':   return cors(env, json(await handleBindByToken(env, userId, body.bindToken)));
         case 'availability':  return cors(env, json(await handleAvailability(env, userId, body.therapist, body.fromDate, body.days)));
-        case 'book':          return cors(env, json(await handleBook(env, userId, body.therapist, body.start)));
+        case 'book':          return cors(env, json(await handleBook(env, userId, body.therapist, body.start, body.sessions)));
         case 'myBookings':    return cors(env, json(await handleMyBookings(env, userId)));
         case 'cancelBooking': return cors(env, json(await handleCancel(env, userId, body.bookingId)));
         default:              return cors(env, json({ error: 'unknown action' }, 400));
@@ -135,12 +136,14 @@ async function handleAvailability(env, userId, therapist, fromDate, days) {
   const template = await getDoc(env, `scheduleTemplate/${therapist}`).catch(() => null);
   const weekly = template ? parseWeekly(template.fields) : {};
 
-  // 只用等於條件查詢（免複合索引），時間範圍在記憶體過濾。
+  // 只用等於條件查詢（免複合索引），狀態與時間範圍在記憶體過濾。
+  // 「待確認 pending」也視為已佔用：客戶送出的瞬間該時段即對外隱藏。
   const booked = await runQuery(env, 'bookings', [
     fieldFilter('therapist', 'EQUAL', strVal(therapist)),
-    fieldFilter('status', 'EQUAL', strVal('confirmed')),
-  ], { compositeOp: 'AND' }).catch(() => []);
-  const bookedSet = new Set(booked.map(b => getStr(b.fields.start)));
+  ]).catch(() => []);
+  const bookedSet = new Set(booked
+    .filter(b => ['pending', 'confirmed'].includes(getStr(b.fields.status)))
+    .map(b => getStr(b.fields.start)));
 
   const result = [];
   for (let d = 0; d < days; d++) {
@@ -167,15 +170,17 @@ async function handleAvailability(env, userId, therapist, fromDate, days) {
 }
 
 // 預約（原子鎖位）：doc id = {therapist}_{ISO} 已存在則失敗 ＝ 已被約
-async function handleBook(env, userId, therapist, startIso) {
+// 狀態機：送出＝pending（待確認、時段即時鎖定），管理員核准後才 confirmed。
+async function handleBook(env, userId, therapist, startIso, sessionsRaw) {
   if (!therapist || !startIso) throw httpErr(400, '資料不完整');
   const client = await findClientByLineUser(env, userId);
   if (!client) throw httpErr(403, '尚未綁定客戶資料');
   const start = new Date(startIso);
   if (isNaN(start) || start <= new Date()) throw httpErr(400, '時段無效或已過期');
+  const sessions = Math.min(Math.max(parseInt(sessionsRaw || 1, 10) || 1, 1), 2); // Phase 1 支援 1–2 節
 
   const docId = `${therapist}_${startIso}`;
-  const endIso = new Date(start.getTime() + SESSION_MINUTES * 60000).toISOString();
+  const endIso = new Date(start.getTime() + sessions * SESSION_MINUTES * 60000).toISOString();
   // 注意：start/end 以「字串」儲存（ISO 字典序＝時間序），與後台 index.html 的字串查詢一致
   const fields = {
     clientId: strVal(client.id),
@@ -184,13 +189,23 @@ async function handleBook(env, userId, therapist, startIso) {
     therapist: strVal(therapist),
     start: strVal(startIso),
     end: strVal(endIso),
-    status: strVal('confirmed'),
+    sessions: { integerValue: String(sessions) },
+    groupId: { nullValue: null },    // 預留：雙人同行群組綁定（Phase 3）
+    groupRole: { nullValue: null },  // 預留：primary／companion（Phase 3）
+    status: strVal('pending'),
     createdAt: strVal(new Date().toISOString()),
   };
   // 條件式建立：文件不存在才寫入（防搶位）
   const ok = await createIfAbsent(env, `bookings/${docId}`, fields);
   if (!ok) throw httpErr(409, '這個時段剛剛被預約走了，請選其他時段');
-  return { ok: true, bookingId: docId, start: startIso, therapist };
+
+  // 即時推播兩位管理員（推播失敗不影響預約成立，後台待核准清單是備援）
+  let adminNotified = true;
+  try {
+    await notifyAdmins(env,
+      `🔔 新預約待核准\n客戶：${getStr(client.fields.name)}\n調理師：${THERAPIST_NAME[therapist] || therapist}\n時間：${twDateTimeStr(start)}\n節數：${sessions} 節（${sessions * SESSION_MINUTES} 分鐘）\n\n請至後台「預約管理」核准或拒絕。`);
+  } catch (e) { adminNotified = false; }
+  return { ok: true, bookingId: docId, start: startIso, therapist, status: 'pending', adminNotified };
 }
 
 async function handleMyBookings(env, userId) {
@@ -200,7 +215,7 @@ async function handleMyBookings(env, userId) {
   ]).catch(() => []);
   const bookings = rows
     .filter(r => getStr(r.fields.start) >= nowIso)
-    .filter(r => ['confirmed', 'declined'].includes(getStr(r.fields.status)))
+    .filter(r => ['pending', 'confirmed', 'declined'].includes(getStr(r.fields.status)))
     .map(r => ({
       bookingId: r.id,
       therapist: getStr(r.fields.therapist),
@@ -217,10 +232,17 @@ async function handleCancel(env, userId, bookingId) {
   if (!b) throw httpErr(404, '預約不存在');
   if (getStr(b.fields.lineUserId) !== userId) throw httpErr(403, '無權取消此預約');
   if (new Date(getStr(b.fields.start)) <= new Date()) throw httpErr(400, '已過期的預約無法取消');
-  await patchDoc(env, `bookings/${bookingId}`, {
+  // 搬移文件（換 id）而非原地改狀態：doc id 本身就是時段鎖，
+  // 搬走後同一時段才能重新被預約（原地改 status 會讓該時段永遠卡死）。
+  await moveDoc(env, `bookings/${bookingId}`, `bookings/${bookingId}~cx${Date.now()}`, {
     status: strVal('cancelled'),
-    cancelledAt: { timestampValue: new Date().toISOString() },
-  }, ['status', 'cancelledAt']);
+    cancelledAt: strVal(new Date().toISOString()),
+  });
+  // 即時通知管理員時段已釋出（通知失敗不影響取消本身）
+  try {
+    await notifyAdmins(env,
+      `❎ 客戶取消預約\n客戶：${getStr(b.fields.clientName)}\n調理師：${THERAPIST_NAME[getStr(b.fields.therapist)] || ''}\n時間：${twDateTimeStr(new Date(getStr(b.fields.start)))}\n該時段已重新開放。`);
+  } catch (e) {}
   return { ok: true };
 }
 
@@ -283,6 +305,37 @@ async function linePush(env, to, message) {
     body: JSON.stringify({ to, messages: [{ type: 'text', text: String(message).slice(0, 4900) }] }),
   });
   if (!res.ok) throw httpErr(502, 'LINE 推播失敗：' + (await res.text()).slice(0, 200));
+}
+
+// 推播兩位管理員（multicast，一次計 1 則/人）。
+// 名單優先讀 Firestore config/app.adminUserIds（陣列或逗號字串），
+// 讀不到再退回 Worker 環境變數 ADMIN_USER_IDS（逗號分隔）。
+async function notifyAdmins(env, text) {
+  const ids = await adminUserIds(env);
+  if (!ids.length) throw httpErr(500, '未設定管理員 LINE 名單（config/app.adminUserIds）');
+  const res = await fetch('https://api.line.me/v2/bot/message/multicast', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}`,
+    },
+    body: JSON.stringify({ to: ids, messages: [{ type: 'text', text: String(text).slice(0, 4900) }] }),
+  });
+  if (!res.ok) throw httpErr(502, 'LINE 管理員推播失敗：' + (await res.text()).slice(0, 200));
+}
+
+async function adminUserIds(env) {
+  try {
+    const c = await getDoc(env, 'config/app');
+    const arr = getArr(c.fields.adminUserIds);
+    if (arr) {
+      const ids = arr.map(getStr).filter(Boolean);
+      if (ids.length) return ids;
+    }
+    const s = getStr(c.fields.adminUserIds);
+    if (s) return s.split(',').map(x => x.trim()).filter(Boolean);
+  } catch (e) {}
+  return String(env.ADMIN_USER_IDS || '').split(',').map(x => x.trim()).filter(Boolean);
 }
 
 function requireSecret(body, env) {
@@ -348,6 +401,25 @@ async function createIfAbsent(env, path, fields) {
     throw httpErr(500, 'firestore create: ' + txt.slice(0, 200));
   }
   return true;
+}
+
+// 原子搬移文件（同一個 commit：新 id 建立＋舊 id 刪除）。
+// 用於取消/拒絕：doc id 是時段鎖，必須搬走該時段才能重新開放預約。
+async function moveDoc(env, fromPath, toPath, extraFields) {
+  const token = await googleToken(env);
+  const src = await getDoc(env, fromPath);
+  const base = `projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+  const res = await fetch(`https://firestore.googleapis.com/v1/${base}:commit`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      writes: [
+        { update: { name: `${base}/${toPath}`, fields: { ...src.fields, ...extraFields } }, currentDocument: { exists: false } },
+        { delete: `${base}/${fromPath}` },
+      ],
+    }),
+  });
+  if (!res.ok) throw httpErr(500, 'firestore move: ' + (await res.text()).slice(0, 200));
 }
 
 async function patchDoc(env, path, fields, updateMask) {
@@ -425,6 +497,11 @@ function twDateStr(d) {
 function twDow(d) {
   const tw = new Date(d.getTime() + 8 * 3600000);
   return tw.getUTCDay();
+}
+function twDateTimeStr(d) {
+  const tw = new Date(d.getTime() + 8 * 3600000);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${tw.getUTCFullYear()}/${p(tw.getUTCMonth() + 1)}/${p(tw.getUTCDate())}（${'日一二三四五六'[tw.getUTCDay()]}）${p(tw.getUTCHours())}:${p(tw.getUTCMinutes())}`;
 }
 function twSlotIso(dateStr, hhmm) {
   if (!/^\d{2}:\d{2}$/.test(hhmm)) return '';

@@ -1430,33 +1430,53 @@ window.setBkFilter = (f) => {
 };
 function renderBookingsList() {
   const el = document.getElementById('bookings-list');
-  let rows = bkCache.filter(b => b.status === 'confirmed');
-  if (bkFilter !== 'all') rows = rows.filter(b => b.therapist === bkFilter);
-  if (!rows.length) { el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3)">目前沒有待處理的預約</div>'; return; }
-  el.innerHTML = rows.map(b => {
+  const byFilter = rows => bkFilter === 'all' ? rows : rows.filter(b => b.therapist === bkFilter);
+  const pend = byFilter(bkCache.filter(b => b.status === 'pending'));
+  const conf = byFilter(bkCache.filter(b => b.status === 'confirmed'));
+  if (!pend.length && !conf.length) { el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3)">目前沒有待處理的預約</div>'; return; }
+  const card = (b, btns) => {
     const d = new Date(b.start);
     const tcls = b.therapist === 'glan' ? 'tag-glan' : 'tag-xuan';
     const t = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
     return `<div class="client-card" style="cursor:default">
       <div class="client-info">
         <div class="client-name">${b.clientName||'(未命名)'} <span class="therapist-tag ${tcls}">${THER_NAME[b.therapist]||''}</span></div>
-        <div class="client-meta">${d.getMonth()+1}/${d.getDate()}（${'日一二三四五六'[d.getDay()]}）${t}</div>
+        <div class="client-meta">${d.getMonth()+1}/${d.getDate()}（${'日一二三四五六'[d.getDay()]}）${t}　${b.sessions||1} 節</div>
       </div>
-      <div style="display:flex;gap:6px;flex-shrink:0">
-        <button class="btn btn-sm" onclick="completeBooking('${b.id}')">完成扣次</button>
-        <button class="btn btn-sm btn-ghost" style="color:var(--red)" onclick="declineBooking('${b.id}')">拒絕</button>
-      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0">${btns}</div>
     </div>`;
-  }).join('');
+  };
+  el.innerHTML =
+    (pend.length ? `<div class="section-label" style="margin:4px 0 8px">🕐 待核准（${pend.length}）</div>` +
+      pend.map(b => card(b,
+        `<button class="btn btn-primary btn-sm" onclick="approveBooking('${b.id}')">核准</button>
+         <button class="btn btn-sm btn-ghost" style="color:var(--red)" onclick="declineBooking('${b.id}')">拒絕</button>`)).join('') : '') +
+    (conf.length ? `<div class="section-label" style="margin:14px 0 8px">✅ 已確認（${conf.length}）</div>` +
+      conf.map(b => card(b,
+        `<button class="btn btn-sm" onclick="completeBooking('${b.id}')">完成扣次</button>
+         <button class="btn btn-sm btn-ghost" style="color:var(--red)" onclick="declineBooking('${b.id}')">拒絕</button>`)).join('') : '');
 }
+window.approveBooking = async (id) => {
+  const b = bkCache.find(x => x.id === id); if (!b) return;
+  if (!confirm(`核准「${b.clientName||'(未命名)'}」${fmt(b.start)} 的預約？`)) return;
+  setSyncing(true);
+  try {
+    await updateDoc(doc(db,'bookings',id), { status: 'confirmed', confirmedAt: new Date().toISOString() });
+    b.status = 'confirmed';
+  } finally { setSyncing(false); }
+  renderBookingsList();
+};
 window.declineBooking = async (id) => {
   const b = bkCache.find(x => x.id === id); if (!b) return;
   if (!confirm('拒絕並取消此預約？將通知客戶並釋出時段。')) return;
   setSyncing(true);
   try {
-    await updateDoc(doc(db,'bookings',id), { status: 'declined', declinedAt: new Date().toISOString() });
+    // 搬移文件（換 id）而非原地改狀態：doc id 是時段鎖，搬走後該時段才能重新被預約
+    const { id: _omit, ...data } = b;
+    await setDoc(doc(db,'bookings', id + '~dx' + Date.now()), { ...data, status: 'declined', declinedAt: new Date().toISOString() });
+    await deleteDoc(doc(db,'bookings', id));
     if (b.lineUserId) {
-      try { await pushLine(b.lineUserId, `您好，很抱歉 🙏\n您預約的 ${fmt(b.start)} 時段，調理師臨時無法接受，此預約已取消。\n造成不便敬請見諒，歡迎重新挑選其他時段預約。`); } catch (e) {}
+      try { await pushLine(b.lineUserId, `您好，很抱歉 🙏\n您預約的 ${fmt(b.start)} 時段，調理師暫時無法安排，此預約未成立。\n造成不便敬請見諒，歡迎重新挑選其他時段預約。`); } catch (e) {}
     }
     b.status = 'declined';
   } finally { setSyncing(false); }
