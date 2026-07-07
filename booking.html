@@ -44,6 +44,13 @@ button,input,select{font:inherit;}button{cursor:pointer;}
 .ther-btn{min-height:54px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface);font-size:16px;font-weight:600;color:var(--text2);}
 .ther-btn.glan.on{background:var(--blue2);border-color:var(--blue);color:var(--blue);}
 .ther-btn.xuan.on{background:var(--pink2);border-color:var(--pink);color:var(--pink);}
+/* sessions picker */
+.sess-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 16px 8px;}
+.sess-btn{position:relative;min-height:54px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface);font-size:15px;font-weight:600;color:var(--text2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;}
+.sess-btn small{font-size:11px;font-weight:400;color:var(--text3);}
+.sess-btn.on{background:var(--teal2);border-color:var(--teal);color:var(--teal);}
+.sess-btn.on small{color:var(--teal);}
+.sess-rec{position:absolute;top:-8px;right:8px;padding:1px 8px;border-radius:999px;background:var(--amber2);border:1px solid #e0bd7a;color:var(--amber);font-size:10px;font-weight:600;}
 /* day + slots */
 .day{margin:0 16px 12px;}
 .day-head{margin:14px 0 8px;font-size:13px;font-weight:650;color:var(--text2);}
@@ -111,6 +118,10 @@ button,input,select{font:inherit;}button{cursor:pointer;}
         <button class="ther-btn glan on" id="tb-glan" onclick="pickTher('glan')">神藏</button>
         <button class="ther-btn xuan" id="tb-xuan" onclick="pickTher('xuan')">神庭</button>
       </div>
+      <div class="sess-row">
+        <button class="sess-btn" id="sb-1" onclick="pickSess(1)">1 節<small>50 分鐘</small></button>
+        <button class="sess-btn on" id="sb-2" onclick="pickSess(2)"><span class="sess-rec">推薦</span>2 節<small>100 分鐘</small></button>
+      </div>
       <div id="avail"></div>
       <div class="sticky-cta" id="book-cta" style="display:none">
         <button class="btn btn-primary" id="book-btn" onclick="doBook()">確認預約</button>
@@ -146,7 +157,8 @@ const DOW_LABEL = ['日','一','二','三','四','五','六'];
 let idToken = null;
 let me = null;
 let curTher = 'glan';
-let selSlot = null;       // { start, therapist }
+let curSessions = 2;      // 預設 2 節（客群主力，介面標示推薦）
+let selSlot = null;       // { start, therapist, sessions }
 let availCache = {};      // therapist -> data
 
 async function api(action, payload = {}) {
@@ -229,11 +241,19 @@ function pickTher(t) {
   loadAvailability();
 }
 
+function pickSess(n) {
+  curSessions = n;
+  document.getElementById('sb-1').classList.toggle('on', n === 1);
+  document.getElementById('sb-2').classList.toggle('on', n === 2);
+  selSlot = null; document.getElementById('book-cta').style.display = 'none';
+  loadAvailability();
+}
+
 async function loadAvailability() {
   const el = document.getElementById('avail');
   el.innerHTML = '<div class="center" style="min-height:40vh"><div class="spinner"></div></div>';
   try {
-    const data = await api('availability', { therapist: curTher, days: 14 });
+    const data = await api('availability', { therapist: curTher, days: 14, sessions: curSessions });
     availCache[curTher] = data;
     renderAvailability(data);
   } catch (e) {
@@ -244,7 +264,7 @@ async function loadAvailability() {
 function renderAvailability(data) {
   const el = document.getElementById('avail');
   if (!data.days.length) {
-    el.innerHTML = '<div class="empty">這位調理師近期尚未開放時段，<br>請改選另一位或稍後再看。</div>';
+    el.innerHTML = '<div class="empty">近期沒有能容納 ' + curSessions + ' 節的時段，<br>可改選節數、另一位調理師，或稍後再看。</div>';
     return;
   }
   el.innerHTML = data.days.map(d => {
@@ -259,12 +279,12 @@ function renderAvailability(data) {
 function selectSlot(start, btn) {
   document.querySelectorAll('.slot.sel').forEach(s => s.classList.remove('sel'));
   btn.classList.add('sel');
-  selSlot = { start, therapist: curTher };
+  selSlot = { start, therapist: curTher, sessions: curSessions };
   const cta = document.getElementById('book-cta');
   cta.style.display = '';
   const d = new Date(start);
   document.getElementById('book-btn').textContent =
-    `確認預約 ${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}（${THERAPIST_LABEL[curTher]}）`;
+    `確認預約 ${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}（${THERAPIST_LABEL[curTher]}・${curSessions} 節）`;
 }
 
 async function doBook() {
@@ -272,7 +292,7 @@ async function doBook() {
   const btn = document.getElementById('book-btn');
   btn.disabled = true; btn.textContent = '預約中…';
   try {
-    await api('book', { therapist: selSlot.therapist, start: selSlot.start });
+    await api('book', { therapist: selSlot.therapist, start: selSlot.start, sessions: selSlot.sessions });
     selSlot = null;
     document.getElementById('book-cta').style.display = 'none';
     alertOk('已收到您的預約申請，確認後將另行通知您 🙏');
@@ -325,7 +345,7 @@ async function renderMyBookings() {
       const pending = b.status === 'pending';
       return `<div class="bk">
         <div>
-          <div class="bk-date">${d.getMonth()+1}/${d.getDate()}（${DOW_LABEL[d.getDay()]}）${pad(d.getHours())}:${pad(d.getMinutes())}<span class="tag ${tcls}">${tname}</span></div>
+          <div class="bk-date">${d.getMonth()+1}/${d.getDate()}（${DOW_LABEL[d.getDay()]}）${pad(d.getHours())}:${pad(d.getMinutes())}<span class="tag ${tcls}">${tname}</span><span class="tag" style="background:var(--surface2);color:var(--text2)">${b.sessions||1} 節</span></div>
           <div class="bk-sub">${declined ? '很抱歉，此時段暫時無法安排' : pending ? '已送出申請，確認後會通知您' : '已確認，期待見到您'}</div>
         </div>
         ${declined

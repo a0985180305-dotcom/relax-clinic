@@ -31,6 +31,7 @@ const PLAN_CONFIG = {
 };
 
 const SESSION_MINUTES = 50;
+const BUFFER_MINUTES = 20;  // 任一預約與前後既有預約固定間隔（需求書 §1）
 const THERAPIST_NAME = { glan: '神藏', xuan: '神庭' }; // 對客戶顯示用代號（鈞=神藏、萱=神庭）
 
 // ───────────────────────────── 進入點 ─────────────────────────────
@@ -58,7 +59,7 @@ export default {
         case 'me':            return cors(env, json(await handleMe(env, userId)));
         case 'bindByPhone':   return cors(env, json(await handleBindByPhone(env, userId, body.phone, body.name)));
         case 'bindByToken':   return cors(env, json(await handleBindByToken(env, userId, body.bindToken)));
-        case 'availability':  return cors(env, json(await handleAvailability(env, userId, body.therapist, body.fromDate, body.days)));
+        case 'availability':  return cors(env, json(await handleAvailability(env, userId, body.therapist, body.fromDate, body.days, body.sessions)));
         case 'book':          return cors(env, json(await handleBook(env, userId, body.therapist, body.start, body.sessions)));
         case 'myBookings':    return cors(env, json(await handleMyBookings(env, userId)));
         case 'cancelBooking': return cors(env, json(await handleCancel(env, userId, body.bookingId)));
@@ -127,24 +128,22 @@ async function handleBindByToken(env, userId, token) {
   return { bound: true, name: getStr(c.fields.name) };
 }
 
-// 某調理師未來 N 天的可約時段
-async function handleAvailability(env, userId, therapist, fromDate, days) {
+// 某調理師未來 N 天的可約時段（依節數過濾：塞得下整段＋前後緩衝才顯示）
+async function handleAvailability(env, userId, therapist, fromDate, days, sessionsRaw) {
   if (!therapist) throw httpErr(400, '請選擇調理師');
   days = Math.min(Math.max(parseInt(days || 14, 10), 1), 60);
+  const sessions = Math.min(Math.max(parseInt(sessionsRaw || 1, 10) || 1, 1), 2); // Phase 1 支援 1–2 節
+  const dur = sessions * SESSION_MINUTES;
   const start = fromDate ? new Date(fromDate + 'T00:00:00+08:00') : startOfTodayTW();
 
   const template = await getDoc(env, `scheduleTemplate/${therapist}`).catch(() => null);
   const weekly = template ? parseWeekly(template.fields) : {};
 
   // 只用等於條件查詢（免複合索引），狀態與時間範圍在記憶體過濾。
-  // 「待確認 pending」也視為已佔用：客戶送出的瞬間該時段即對外隱藏。
   const booked = await runQuery(env, 'bookings', [
     fieldFilter('therapist', 'EQUAL', strVal(therapist)),
   ]).catch(() => []);
-  // completed 也算佔用：提前按「完成扣次」時，時段不得重新對外出現
-  const bookedSet = new Set(booked
-    .filter(b => ['pending', 'confirmed', 'completed'].includes(getStr(b.fields.status)))
-    .map(b => getStr(b.fields.start)));
+  const busy = buildBusy(booked);
 
   const result = [];
   for (let d = 0; d < days; d++) {
@@ -161,12 +160,12 @@ async function handleAvailability(env, userId, therapist, fromDate, days) {
       times = (weekly[dow] || []).slice();
     }
     times = [...new Set(times)].sort();
-    // 隱私：已被預約（含待確認/已完成）或已過期的時段直接不送出，
-    // 客戶端看不到、也推不出店內的預約狀況。
+    // 隱私：塞不下（撞既有預約±20分、跨午休、超過21:00）或已過期的時段
+    // 直接不送出，客戶端看不到、也推不出店內的預約狀況。
     const slots = times.map(hhmm => {
       const iso = twSlotIso(dateStr, hhmm);
       return { time: hhmm, start: iso, available: true };
-    }).filter(s => s.start && !bookedSet.has(s.start) && new Date(s.start) > new Date());
+    }).filter(s => s.start && new Date(s.start) > new Date() && fitsRules(new Date(s.start).getTime(), dur, busy));
     if (slots.length) result.push({ date: dateStr, dow, slots });
   }
   return { therapist, days: result };
@@ -181,6 +180,15 @@ async function handleBook(env, userId, therapist, startIso, sessionsRaw) {
   const start = new Date(startIso);
   if (isNaN(start) || start <= new Date()) throw httpErr(400, '時段無效或已過期');
   const sessions = Math.min(Math.max(parseInt(sessionsRaw || 1, 10) || 1, 1), 2); // Phase 1 支援 1–2 節
+
+  // 送出當下重新驗證：整段（含前後 20 分緩衝）塞得下、不跨午休、不超過 21:00。
+  // 防止客戶停在舊畫面點選早已不符的時段。
+  const rows = await runQuery(env, 'bookings', [
+    fieldFilter('therapist', 'EQUAL', strVal(therapist)),
+  ]).catch(() => []);
+  if (!fitsRules(start.getTime(), sessions * SESSION_MINUTES, buildBusy(rows))) {
+    throw httpErr(409, '這個時段剛剛被預約走了，或無法容納所選節數，請重新選擇');
+  }
 
   const docId = `${therapist}_${startIso}`;
   const endIso = new Date(start.getTime() + sessions * SESSION_MINUTES * 60000).toISOString();
@@ -224,6 +232,7 @@ async function handleMyBookings(env, userId) {
       therapist: getStr(r.fields.therapist),
       start: getStr(r.fields.start),
       status: getStr(r.fields.status),
+      sessions: getInt(r.fields.sessions) || 1,
     }))
     .sort((a, b) => a.start.localeCompare(b.start));
   return { bookings };
@@ -271,6 +280,35 @@ function activePackages(packagesField) {
       expired: expiry ? new Date(expiry) < now : false,
     };
   }).filter(p => p.remaining > 0 && !p.expired);
+}
+
+// ───────────────────────────── 工具：時段規則 ─────────────────────────────
+// 佔用區間：待確認／已確認／已完成的預約，各佔 [start, end)
+function buildBusy(rows) {
+  return rows
+    .filter(b => ['pending', 'confirmed', 'completed'].includes(getStr(b.fields.status)))
+    .map(b => {
+      const s = new Date(getStr(b.fields.start)).getTime();
+      const eStr = getStr(b.fields.end);
+      return [s, eStr ? new Date(eStr).getTime() : s + SESSION_MINUTES * 60000];
+    });
+}
+// 硬規則檢查：整段落在營業時間（07:00–12:00／14:00–21:00，不跨午休），
+// 且與所有既有預約前後保持 20 分鐘緩衝。
+function fitsRules(startMs, durMin, busy) {
+  if (isNaN(startMs)) return false;
+  const endMs = startMs + durMin * 60000;
+  const tw = new Date(startMs + 8 * 3600000);
+  const startMin = tw.getUTCHours() * 60 + tw.getUTCMinutes();
+  const endMin = startMin + durMin;
+  const morning = startMin >= 7 * 60 && endMin <= 12 * 60;
+  const evening = startMin >= 14 * 60 && endMin <= 21 * 60;
+  if (!morning && !evening) return false;
+  const buf = BUFFER_MINUTES * 60000;
+  for (const [bs, be] of busy) {
+    if (startMs - buf < be && bs < endMs + buf) return false;
+  }
+  return true;
 }
 
 // ───────────────────────────── 工具：班表 ─────────────────────────────

@@ -169,6 +169,12 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
 .therapist-btn { flex: 1; padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border2); background: var(--surface); cursor: pointer; text-align: center; font-size: 14px; font-family: inherit; transition: all .12s; }
 .therapist-btn.glan.on { background: #e8f0ff; border-color: #3b5bdb; color: #3b5bdb; font-weight: 500; }
 .therapist-btn.xuan.on { background: #fce8f3; border-color: #c2255c; color: #c2255c; font-weight: 500; }
+/* 班表時段小卡（方案一：時間選擇器＋加入鈕） */
+.tchip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid #b8c8f8; background: #e8f0ff; color: #3b5bdb; border-radius: 999px; font-size: 13px; }
+.tchip button { border: none; background: none; color: inherit; cursor: pointer; font-size: 13px; padding: 0; line-height: 1; }
+.trow { display: flex; gap: 8px; align-items: center; }
+.trow input[type="time"] { flex: 0 0 130px; }
+.tchips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; min-height: 26px; }
 </style>
 </head>
 <body>
@@ -532,7 +538,7 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
   <div class="section">
     <div class="section-label">每週固定可約時段</div>
     <div class="note" style="margin-bottom:12px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text2);font-size:13px;">
-      每格輸入該日可約的開始時間，用逗號分隔，例如：<code>10:00, 11:00, 14:00, 15:00</code>。留空表示該日不開放。
+      每天用時間選擇器挑「可約的開始時間」→ 按「＋ 加入」，下方出現時段小卡，點 ✕ 移除。沒有小卡＝該日不開放。改完記得按右上「儲存」。
     </div>
     <div id="sched-fields"></div>
   </div>
@@ -540,11 +546,17 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
   <div class="section">
     <div class="section-label">單日調整（休診 / 臨時加開）</div>
     <div class="note" style="margin-bottom:12px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text2);font-size:13px;">
-      臨時要請假或加開時用。選日期後，下方會帶出「該日實際可約時段」，直接改成當天要開放的時間即可。<strong>清空＝當日休診</strong>。改完按「儲存單日」。
+      臨時要請假或加開時用。選日期後，下方會帶出「該日實際可約時段」，用 ＋ 加入或 ✕ 移除調整。<strong>移除全部時段＝當日休診</strong>。改完按「儲存單日」。
     </div>
     <div class="field"><label>選擇日期</label><input id="ov-date" type="date" onchange="loadOverride()"></div>
     <div id="ov-body" style="display:none;">
-      <div class="field"><label id="ov-label">該日可約時段</label><input id="ov-times" placeholder="例：10:00, 11:00, 14:00（清空＝休診）"></div>
+      <div class="field"><label id="ov-label">該日可約時段</label>
+        <div class="trow">
+          <input type="time" id="ov-time" step="600" value="10:00">
+          <button class="btn btn-sm" onclick="ovAdd()">＋ 加入</button>
+        </div>
+        <div class="tchips" id="ov-chips"></div>
+      </div>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-sm btn-primary" style="flex:1;" onclick="saveOverride()">儲存單日</button>
         <button class="btn btn-sm btn-ghost" style="flex:1;" onclick="resetOverride()">恢復為固定班表</button>
@@ -1521,7 +1533,15 @@ window.completeBooking = async (id) => {
 // ══════════════════ 班表設定 ══════════════════
 const DOW_KEYS = [['mon','週一'],['tue','週二'],['wed','週三'],['thu','週四'],['fri','週五'],['sat','週六'],['sun','週日']];
 let schTher = 'glan';
+let schedState = {};   // { mon: ['10:00',...], ... } 畫面編輯中的班表
 window.openSchedule = () => { show('s-schedule'); loadSchedule('glan'); };
+
+// 時間字串驗證：HH:MM 且分鐘為 10 分鐘刻度（需求書：時段以 10 分鐘為單位）
+function validTime(v) {
+  if (!/^\d{2}:\d{2}$/.test(v || '')) return false;
+  return parseInt(v.slice(3), 10) % 10 === 0;
+}
+
 window.loadSchedule = async (t) => {
   schTher = t;
   document.getElementById('schb-glan').classList.toggle('on', t==='glan');
@@ -1530,21 +1550,37 @@ window.loadSchedule = async (t) => {
   wrap.innerHTML = '<div style="color:var(--text3);padding:10px">載入中…</div>';
   let data = {};
   try { const d = await getDoc(doc(db,'scheduleTemplate',t)); if (d.exists()) data = d.data(); } catch (e) {}
-  wrap.innerHTML = DOW_KEYS.map(([k,label]) => {
-    const val = (data[k]||[]).join(', ');
-    return `<div class="field"><label>${label}</label><input id="sch-${k}" value="${val}" placeholder="例：10:00, 11:00, 14:00"></div>`;
-  }).join('');
+  schedState = {};
+  DOW_KEYS.forEach(([k]) => { schedState[k] = [...new Set(data[k] || [])].sort(); });
+  wrap.innerHTML = DOW_KEYS.map(([k,label]) => `
+    <div class="field"><label>${label}</label>
+      <div class="trow">
+        <input type="time" id="sch-t-${k}" step="600" value="10:00">
+        <button class="btn btn-sm" onclick="schedAdd('${k}')">＋ 加入</button>
+      </div>
+      <div class="tchips" id="sch-chips-${k}"></div>
+    </div>`).join('');
+  DOW_KEYS.forEach(([k]) => renderSchedChips(k));
   const ovd = document.getElementById('ov-date');
   if (ovd && ovd.value) loadOverride();
 };
+function renderSchedChips(k) {
+  const el = document.getElementById('sch-chips-'+k);
+  if (!el) return;
+  el.innerHTML = (schedState[k] || []).length
+    ? schedState[k].map(t => `<span class="tchip">${t}<button title="移除" onclick="schedDel('${k}','${t}')">✕</button></span>`).join('')
+    : '<span style="font-size:12px;color:var(--text3)">不開放</span>';
+}
+window.schedAdd = (k) => {
+  const v = (document.getElementById('sch-t-'+k).value || '').slice(0,5);
+  if (!validTime(v)) { alert('請選有效時間，分鐘需為 10 分鐘刻度（如 09:10）'); return; }
+  if (!schedState[k].includes(v)) { schedState[k].push(v); schedState[k].sort(); }
+  renderSchedChips(k);
+};
+window.schedDel = (k, t) => { schedState[k] = schedState[k].filter(x => x !== t); renderSchedChips(k); };
 window.saveSchedule = async () => {
   const out = {};
-  DOW_KEYS.forEach(([k]) => {
-    const raw = (document.getElementById('sch-'+k)||{}).value || '';
-    const times = raw.split(/[,，\s]+/).map(s => s.trim()).filter(s => /^\d{1,2}:\d{2}$/.test(s))
-      .map(s => { const [h,m] = s.split(':'); return String(h).padStart(2,'0') + ':' + m; });
-    out[k] = [...new Set(times)].sort();
-  });
+  DOW_KEYS.forEach(([k]) => { out[k] = [...new Set(schedState[k] || [])].sort(); });
   setSyncing(true);
   try { await setDoc(doc(db,'scheduleTemplate',schTher), out); } finally { setSyncing(false); }
   alert('已儲存「' + THER_NAME[schTher] + '」的班表');
@@ -1552,6 +1588,7 @@ window.saveSchedule = async () => {
 
 // 單日調整（休診 / 臨時加開）— 寫入 scheduleOverride/{therapist}_{date}.slots（絕對指定；空＝休診）
 const DOW_TO_KEY = { 0:'sun', 1:'mon', 2:'tue', 3:'wed', 4:'thu', 5:'fri', 6:'sat' };
+let ovState = [];   // 單日調整畫面編輯中的時段
 window.loadOverride = async () => {
   const date = document.getElementById('ov-date').value;
   const body = document.getElementById('ov-body');
@@ -1570,15 +1607,27 @@ window.loadOverride = async () => {
     } catch (e) { times = []; }
   }
   document.getElementById('ov-label').textContent = `${THER_NAME[schTher]}｜${date} 可約時段`;
-  document.getElementById('ov-times').value = times.join(', ');
+  ovState = [...new Set(times)].sort();
+  renderOvChips();
   body.style.display = '';
 };
+function renderOvChips() {
+  const el = document.getElementById('ov-chips');
+  if (!el) return;
+  el.innerHTML = ovState.length
+    ? ovState.map(t => `<span class="tchip">${t}<button title="移除" onclick="ovDel('${t}')">✕</button></span>`).join('')
+    : '<span style="font-size:12px;color:var(--text3)">目前無時段（儲存＝當日休診）</span>';
+}
+window.ovAdd = () => {
+  const v = (document.getElementById('ov-time').value || '').slice(0,5);
+  if (!validTime(v)) { alert('請選有效時間，分鐘需為 10 分鐘刻度（如 09:10）'); return; }
+  if (!ovState.includes(v)) { ovState.push(v); ovState.sort(); }
+  renderOvChips();
+};
+window.ovDel = (t) => { ovState = ovState.filter(x => x !== t); renderOvChips(); };
 window.saveOverride = async () => {
   const date = document.getElementById('ov-date').value; if (!date) return;
-  const raw = document.getElementById('ov-times').value || '';
-  const slots = raw.split(/[,，\s]+/).map(s => s.trim()).filter(s => /^\d{1,2}:\d{2}$/.test(s))
-    .map(s => { const [h, m] = s.split(':'); return String(h).padStart(2,'0') + ':' + m; });
-  const uniq = [...new Set(slots)].sort();
+  const uniq = [...new Set(ovState)].sort();
   setSyncing(true);
   try { await setDoc(doc(db,'scheduleOverride', `${schTher}_${date}`), { slots: uniq, therapist: schTher, date, updatedAt: new Date().toISOString() }); }
   finally { setSyncing(false); }
