@@ -745,6 +745,11 @@ function fmt(iso) {
   const d = new Date(iso);
   return d.getFullYear()+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+String(d.getDate()).padStart(2,'0');
 }
+function fmtDT(iso) {
+  const d = new Date(iso);
+  const p = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}/${p(d.getMonth()+1)}/${p(d.getDate())}（${'日一二三四五六'[d.getDay()]}）${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 
 function renderList() {
   const el = document.getElementById('client-list');
@@ -1470,6 +1475,9 @@ window.approveBooking = async (id) => {
   try {
     await updateDoc(doc(db,'bookings',id), { status: 'confirmed', confirmedAt: new Date().toISOString() });
     b.status = 'confirmed';
+    if (b.lineUserId) {
+      try { await pushLine(b.lineUserId, `親愛的 ${b.clientName||''} 您好 🌿\n您的預約已確認！\n\n📅 時間：${fmtDT(b.start)}\n💆 調理師：${b.therapist==='glan'?'神藏':'神庭'}\n⏱ 節數：${b.sessions||1} 節（${(b.sessions||1)*50} 分鐘）\n\n如需取消或改期，可至「我的預約」操作，或直接訊息我們。期待見到您！`); } catch (e) {}
+    }
   } finally { setSyncing(false); }
   renderBookingsList();
 };
@@ -1483,7 +1491,7 @@ window.declineBooking = async (id) => {
     await setDoc(doc(db,'bookings', id + '~dx' + Date.now()), { ...data, status: 'declined', declinedAt: new Date().toISOString() });
     await deleteDoc(doc(db,'bookings', id));
     if (b.lineUserId) {
-      try { await pushLine(b.lineUserId, `您好，很抱歉 🙏\n您預約的 ${fmt(b.start)} 時段，調理師暫時無法安排，此預約未成立。\n造成不便敬請見諒，歡迎重新挑選其他時段預約。`); } catch (e) {}
+      try { await pushLine(b.lineUserId, `您好，很抱歉 🙏\n您預約的 ${fmtDT(b.start)} 時段，調理師暫時無法安排，此預約未成立。\n造成不便敬請見諒，歡迎重新挑選其他時段預約。`); } catch (e) {}
     }
     b.status = 'declined';
   } finally { setSyncing(false); }

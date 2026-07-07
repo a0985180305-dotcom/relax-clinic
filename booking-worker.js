@@ -161,10 +161,12 @@ async function handleAvailability(env, userId, therapist, fromDate, days) {
       times = (weekly[dow] || []).slice();
     }
     times = [...new Set(times)].sort();
+    // 隱私：已被預約（含待確認/已完成）或已過期的時段直接不送出，
+    // 客戶端看不到、也推不出店內的預約狀況。
     const slots = times.map(hhmm => {
       const iso = twSlotIso(dateStr, hhmm);
-      return { time: hhmm, start: iso, available: !bookedSet.has(iso) && new Date(iso) > new Date() };
-    }).filter(s => s.start);
+      return { time: hhmm, start: iso, available: true };
+    }).filter(s => s.start && !bookedSet.has(s.start) && new Date(s.start) > new Date());
     if (slots.length) result.push({ date: dateStr, dow, slots });
   }
   return { therapist, days: result };
