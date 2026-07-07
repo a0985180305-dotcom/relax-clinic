@@ -662,6 +662,7 @@ document.getElementById('login-email').addEventListener('keydown', e => {
 });
 
 let unsubscribeSnapshot = null;
+let deepLinkDone = false;
 
 // Auth state handler
 onAuthStateChanged(auth, (user) => {
@@ -673,6 +674,12 @@ onAuthStateChanged(auth, (user) => {
 
     // 載入機密設定（推播密鑰）— 僅登入後可讀
     loadAppConfig();
+
+    // 深連結：推播訊息的連結帶 ?screen=bookings，登入後直接開「預約管理」
+    if (!deepLinkDone && new URLSearchParams(location.search).get('screen') === 'bookings') {
+      deepLinkDone = true;
+      setTimeout(() => window.openBookings(), 0);
+    }
 
     // Start real-time listener
     if (unsubscribeSnapshot) unsubscribeSnapshot();

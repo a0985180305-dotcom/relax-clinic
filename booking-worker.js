@@ -141,8 +141,9 @@ async function handleAvailability(env, userId, therapist, fromDate, days) {
   const booked = await runQuery(env, 'bookings', [
     fieldFilter('therapist', 'EQUAL', strVal(therapist)),
   ]).catch(() => []);
+  // completed 也算佔用：提前按「完成扣次」時，時段不得重新對外出現
   const bookedSet = new Set(booked
-    .filter(b => ['pending', 'confirmed'].includes(getStr(b.fields.status)))
+    .filter(b => ['pending', 'confirmed', 'completed'].includes(getStr(b.fields.status)))
     .map(b => getStr(b.fields.start)));
 
   const result = [];
@@ -203,7 +204,7 @@ async function handleBook(env, userId, therapist, startIso, sessionsRaw) {
   let adminNotified = true;
   try {
     await notifyAdmins(env,
-      `🔔 新預約待核准\n客戶：${getStr(client.fields.name)}\n調理師：${THERAPIST_NAME[therapist] || therapist}\n時間：${twDateTimeStr(start)}\n節數：${sessions} 節（${sessions * SESSION_MINUTES} 分鐘）\n\n請至後台「預約管理」核准或拒絕。`);
+      `🔔 新預約待核准\n客戶：${getStr(client.fields.name)}\n調理師：${THERAPIST_NAME[therapist] || therapist}\n時間：${twDateTimeStr(start)}\n節數：${sessions} 節（${sessions * SESSION_MINUTES} 分鐘）\n\n👉 點此開後台核准／拒絕：\nhttps://a0985180305-dotcom.github.io/relax-clinic/?screen=bookings`);
   } catch (e) { adminNotified = false; }
   return { ok: true, bookingId: docId, start: startIso, therapist, status: 'pending', adminNotified };
 }
