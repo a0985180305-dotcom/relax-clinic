@@ -232,7 +232,9 @@ function enterMain() {
   goTab('book');
 }
 
+let curTab = 'book';
 function goTab(t) {
+  curTab = t;
   ['book','pkg','my'].forEach(x => {
     document.getElementById('s-' + x).classList.toggle('on', x === t);
     document.getElementById('tab-' + x).classList.toggle('on', x === t);
@@ -241,6 +243,14 @@ function goTab(t) {
   if (t === 'pkg') renderPackages();
   if (t === 'my') renderMyBookings();
 }
+
+// 頁面重新回到前景時（客人切走又切回）自動刷新目前分頁，讓核准後的狀態即時更新
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !me) return;
+  if (curTab === 'my') renderMyBookings();
+  else if (curTab === 'pkg') renderPackages();
+  else if (curTab === 'book') loadAvailability();
+});
 
 function pickTher(t) {
   curTher = t;
