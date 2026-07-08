@@ -33,6 +33,8 @@ const PLAN_CONFIG = {
 const SESSION_MINUTES = 50;
 const BUFFER_MINUTES = 20;  // 任一預約與前後既有預約固定間隔（需求書 §1）
 const THERAPIST_NAME = { glan: '神藏', xuan: '神庭' }; // 對客戶顯示用代號（鈞=神藏、萱=神庭）
+// Google 日曆顏色 id：神藏＝薰衣草(1)、神庭＝藍莓(9)。待確認階段不上色（南瓜黃擱置）。
+const CAL_COLOR = { glan: '1', xuan: '9' };
 
 // ───────────────────────────── 進入點 ─────────────────────────────
 export default {
@@ -50,6 +52,12 @@ export default {
         requireSecret(body, env);
         await linePush(env, body.lineUserId, body.message);
         return cors(env, json({ ok: true }));
+      }
+
+      // 後台專用：核准/拒絕時同步 Google 日曆（confirm＝去前綴+上色；remove＝刪事件）
+      if (action === 'adminCalendar') {
+        requireSecret(body, env);
+        return cors(env, json(await handleAdminCalendar(env, body.op, body.bookingId)));
       }
 
       // 以下皆客戶端：需 LINE 身分
@@ -210,6 +218,17 @@ async function handleBook(env, userId, therapist, startIso, sessionsRaw) {
   const ok = await createIfAbsent(env, `bookings/${docId}`, fields);
   if (!ok) throw httpErr(409, '這個時段剛剛被預約走了，請選其他時段');
 
+  // 在「鈞&萱」日曆建【待確認】事件（失敗不影響預約成立，只是日曆少一筆）
+  try {
+    const name = getStr(client.fields.name);
+    const evId = await calCreate(env, {
+      summary: `【待確認】${name}`,
+      description: `系統線上預約（待核准）\n調理師：${THERAPIST_NAME[therapist] || therapist}\n節數：${sessions} 節（${sessions * SESSION_MINUTES} 分鐘）\n客戶：${name}`,
+      startIso, endIso,
+    });
+    if (evId) await patchDoc(env, `bookings/${docId}`, { calendarEventId: strVal(evId) }, ['calendarEventId']);
+  } catch (e) {}
+
   // 即時推播兩位管理員（推播失敗不影響預約成立，後台待核准清單是備援）
   let adminNotified = true;
   try {
@@ -244,6 +263,9 @@ async function handleCancel(env, userId, bookingId) {
   if (!b) throw httpErr(404, '預約不存在');
   if (getStr(b.fields.lineUserId) !== userId) throw httpErr(403, '無權取消此預約');
   if (new Date(getStr(b.fields.start)) <= new Date()) throw httpErr(400, '已過期的預約無法取消');
+  // 先刪日曆事件（失敗不影響取消本身）
+  const evId = getStr(b.fields.calendarEventId);
+  if (evId) { try { await calDelete(env, evId); } catch (e) {} }
   // 搬移文件（換 id）而非原地改狀態：doc id 本身就是時段鎖，
   // 搬走後同一時段才能重新被預約（原地改 status 會讓該時段永遠卡死）。
   await moveDoc(env, `bookings/${bookingId}`, `bookings/${bookingId}~cx${Date.now()}`, {
@@ -256,6 +278,32 @@ async function handleCancel(env, userId, bookingId) {
       `❎ 客戶取消預約\n客戶：${getStr(b.fields.clientName)}\n調理師：${THERAPIST_NAME[getStr(b.fields.therapist)] || ''}\n時間：${twDateTimeStr(new Date(getStr(b.fields.start)))}\n該時段已重新開放。`);
   } catch (e) {}
   return { ok: true };
+}
+
+// 後台核准/拒絕時同步日曆：confirm＝標題去【待確認】+上調理師顏色；remove＝刪事件
+async function handleAdminCalendar(env, op, bookingId) {
+  if (!bookingId) throw httpErr(400, '缺少預約編號');
+  const b = await getDoc(env, `bookings/${bookingId}`).catch(() => null);
+  if (!b) return { ok: true, skipped: '預約不存在' };
+  const evId = getStr(b.fields.calendarEventId);
+  if (!evId) return { ok: true, skipped: '此預約無日曆事件' };
+
+  if (op === 'confirm') {
+    const therapist = getStr(b.fields.therapist);
+    const name = getStr(b.fields.clientName);
+    const sessions = getInt(b.fields.sessions) || 1;
+    await calPatch(env, evId, {
+      summary: name,
+      colorId: CAL_COLOR[therapist] || null,
+      description: `系統線上預約（已確認）\n調理師：${THERAPIST_NAME[therapist] || therapist}\n節數：${sessions} 節（${sessions * SESSION_MINUTES} 分鐘）\n客戶：${name}`,
+    });
+    return { ok: true };
+  }
+  if (op === 'remove') {
+    await calDelete(env, evId);
+    return { ok: true };
+  }
+  throw httpErr(400, '未知的日曆操作');
 }
 
 // ───────────────────────────── 工具：方案 ─────────────────────────────
@@ -475,6 +523,51 @@ async function patchDoc(env, path, fields, updateMask) {
   return res.json();
 }
 
+// ───────────────────────────── Google 日曆 REST ─────────────────────────────
+const CAL_BASE = (env) => `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(env.GOOGLE_CALENDAR_ID)}/events`;
+
+async function calCreate(env, { summary, description, startIso, endIso }) {
+  if (!env.GOOGLE_CALENDAR_ID) return null; // 未設定日曆 ID → 靜默略過（不阻擋預約）
+  const token = await googleToken(env);
+  const res = await fetch(CAL_BASE(env), {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      summary, description,
+      start: { dateTime: startIso, timeZone: 'Asia/Taipei' },
+      end: { dateTime: endIso, timeZone: 'Asia/Taipei' },
+    }),
+  });
+  if (!res.ok) throw httpErr(502, 'calendar create: ' + (await res.text()).slice(0, 200));
+  return (await res.json()).id;
+}
+
+async function calPatch(env, eventId, patch) {
+  if (!env.GOOGLE_CALENDAR_ID) return;
+  const token = await googleToken(env);
+  const body = {};
+  for (const [k, v] of Object.entries(patch)) if (v !== null && v !== undefined) body[k] = v;
+  const res = await fetch(`${CAL_BASE(env)}/${encodeURIComponent(eventId)}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw httpErr(502, 'calendar patch: ' + (await res.text()).slice(0, 200));
+}
+
+async function calDelete(env, eventId) {
+  if (!env.GOOGLE_CALENDAR_ID) return;
+  const token = await googleToken(env);
+  const res = await fetch(`${CAL_BASE(env)}/${encodeURIComponent(eventId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  // 404＝事件已不存在，視為成功
+  if (!res.ok && res.status !== 404 && res.status !== 410) {
+    throw httpErr(502, 'calendar delete: ' + (await res.text()).slice(0, 200));
+  }
+}
+
 // ── Google 服務帳號 → OAuth2 access token（RS256 JWT，WebCrypto） ──
 let _tokenCache = { token: null, exp: 0 };
 async function googleToken(env) {
@@ -484,7 +577,7 @@ async function googleToken(env) {
   const header = { alg: 'RS256', typ: 'JWT' };
   const claim = {
     iss: env.FIREBASE_CLIENT_EMAIL,
-    scope: 'https://www.googleapis.com/auth/datastore',
+    scope: 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/calendar',
     aud: 'https://oauth2.googleapis.com/token',
     iat: now,
     exp: now + 3600,

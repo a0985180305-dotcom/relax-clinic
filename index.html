@@ -622,6 +622,16 @@ async function pushLine(lineUserId, message) {
   if (!res.ok) { const t = await res.text().catch(()=>'' ); throw new Error('推播失敗：' + t.slice(0,150)); }
   return res.json();
 }
+// 透過 Worker 同步 Google 日曆（op: 'confirm' 上色去前綴 / 'remove' 刪事件）
+async function syncCalendar(op, bookingId) {
+  if (!THERAPIST_SHARED_SECRET) return { skipped: true };
+  const res = await fetch(WORKER_URL, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'adminCalendar', secret: THERAPIST_SHARED_SECRET, op, bookingId }),
+  });
+  if (!res.ok) { const t = await res.text().catch(()=>'' ); throw new Error('日曆同步失敗：' + t.slice(0,150)); }
+  return res.json();
+}
 const THER_NAME = { glan: '鈞', xuan: '萱' };
 // ════════════════════════════════════════════════════════════
 
@@ -1487,6 +1497,7 @@ window.approveBooking = async (id) => {
   try {
     await updateDoc(doc(db,'bookings',id), { status: 'confirmed', confirmedAt: new Date().toISOString() });
     b.status = 'confirmed';
+    try { await syncCalendar('confirm', id); } catch (e) {}
     if (b.lineUserId) {
       try { await pushLine(b.lineUserId, `親愛的 ${b.clientName||''} 您好 🌿\n您的預約已確認！\n\n📅 時間：${fmtDT(b.start)}\n💆 調理師：${b.therapist==='glan'?'神藏':'神庭'}\n⏱ 節數：${b.sessions||1} 節（${(b.sessions||1)*50} 分鐘）\n\n如需取消或改期，可至「我的預約」操作，或直接訊息我們。期待見到您！`); } catch (e) {}
     }
@@ -1498,6 +1509,8 @@ window.declineBooking = async (id) => {
   if (!confirm('拒絕並取消此預約？將通知客戶並釋出時段。')) return;
   setSyncing(true);
   try {
+    // 先刪日曆事件（此時原文件仍在，Worker 讀得到 calendarEventId），再搬移文件
+    try { await syncCalendar('remove', id); } catch (e) {}
     // 搬移文件（換 id）而非原地改狀態：doc id 是時段鎖，搬走後該時段才能重新被預約
     const { id: _omit, ...data } = b;
     await setDoc(doc(db,'bookings', id + '~dx' + Date.now()), { ...data, status: 'declined', declinedAt: new Date().toISOString() });
