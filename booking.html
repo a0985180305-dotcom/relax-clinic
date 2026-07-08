@@ -190,11 +190,20 @@ async function boot() {
     if (bindToken) { try { await api('bindByToken', { bindToken }); } catch(e){} }
 
     me = await api('me');
+    sessionStorage.removeItem('reloginTried'); // 驗證成功，清除重登記號
     if (!me.bound) { showScreen('bind'); return; }
     enterMain();
   } catch (e) {
+    const msg = String(e.message || e);
+    // 身分票券過期（頁面放太久）→ 自動重新登入一次，不把錯誤丟給客人
+    if (/身分驗證失敗|缺少身分權杖/.test(msg) && !sessionStorage.getItem('reloginTried')) {
+      sessionStorage.setItem('reloginTried', '1');
+      try { liff.logout(); } catch (e2) {}
+      liff.login();
+      return;
+    }
     document.getElementById('boot').innerHTML =
-      '<div class="note danger" style="margin:20px">啟動失敗：' + (e.message || e) + '</div>';
+      '<div class="note danger" style="margin:20px">啟動失敗：' + msg + '</div>';
   }
 }
 
