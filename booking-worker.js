@@ -67,8 +67,10 @@ export default {
         case 'me':            return cors(env, json(await handleMe(env, userId)));
         case 'bindByPhone':   return cors(env, json(await handleBindByPhone(env, userId, body.phone, body.name)));
         case 'bindByToken':   return cors(env, json(await handleBindByToken(env, userId, body.bindToken)));
+        case 'selfRegister':  return cors(env, json(await handleSelfRegister(env, userId, body.profile || {})));
+        case 'requestHelp':   return cors(env, json(await handleRequestHelp(env, userId, body.profile || {})));
         case 'availability':  return cors(env, json(await handleAvailability(env, userId, body.therapist, body.fromDate, body.days, body.sessions)));
-        case 'book':          return cors(env, json(await handleBook(env, userId, body.therapist, body.start, body.sessions)));
+        case 'book':          return cors(env, json(await handleBook(env, userId, body.therapist, body.start, body.sessions, body.extras, body.extrasOther)));
         case 'myBookings':    return cors(env, json(await handleMyBookings(env, userId)));
         case 'cancelBooking': return cors(env, json(await handleCancel(env, userId, body.bookingId)));
         default:              return cors(env, json({ error: 'unknown action' }, 400));
@@ -93,6 +95,8 @@ async function handleMe(env, userId) {
     therapist: getStr(client.fields.therapist),
     packages,
     totalRemaining: packages.reduce((a, p) => a + p.remaining, 0),
+    lastExtras: (getArr(client.fields.lastExtras) || []).map(getStr).filter(Boolean),
+    lastExtrasOther: getStr(client.fields.lastExtrasOther),
   };
 }
 
@@ -136,6 +140,62 @@ async function handleBindByToken(env, userId, token) {
   return { bound: true, name: getStr(c.fields.name) };
 }
 
+// 新客自助建檔（查無電話時）：先用電話查重，查到就綁定既有檔（避免重複病歷），
+// 查無才新建一筆 clients（標記 source=自助待確認，供調理師後台過目）。
+async function handleSelfRegister(env, userId, p) {
+  const already = await findClientByLineUser(env, userId);
+  if (already) return { bound: true, name: getStr(already.fields.name), matched: true };
+
+  const name = String(p.name || '').trim();
+  const phone = String(p.phone || '').trim();
+  if (!name) throw httpErr(400, '請填寫姓名');
+  if (!phone) throw httpErr(400, '請填寫電話');
+
+  // 查重：電話對得上既有客戶 → 直接綁定，不新建
+  const dup = await findClientByPhone(env, phone);
+  if (dup) {
+    if (getStr(dup.fields.lineUserId)) throw httpErr(409, '這支電話已有客戶資料且綁定其他 LINE，請改用「請專人協助」');
+    await patchDoc(env, `clients/${dup.id}`, { lineUserId: strVal(userId) }, ['lineUserId']);
+    return { bound: true, name: getStr(dup.fields.name), matched: true };
+  }
+
+  // 查無 → 新建正式病歷（標記待確認）
+  const fields = {
+    name: strVal(name),
+    contact: strVal(phone),
+    gender: strVal(p.gender),
+    birthday: strVal(p.birthday),
+    age: strVal(ageFromBirthday(p.birthday)),
+    avoid: strVal(p.avoid),          // 不想／不方便被碰的部位（與禁忌分開）
+    contra: strVal(p.contra),        // 禁忌／特殊注意事項
+    history: strVal(p.history),      // 手術史＋身體狀況勾選（客戶端已彙整成文字）
+    therapist: strVal(''),           // 負責調理師由調理師後台指派
+    source: strVal('自助待確認'),
+    lineUserId: strVal(userId),
+    sessions: { arrayValue: { values: [] } },
+    createdAt: strVal(new Date().toISOString()),
+  };
+  const newId = await createDoc(env, 'clients', fields);
+
+  // 通知調理師有新客自助建檔（只帶姓名／電話，病歷不進推播）
+  try {
+    await notifyAdmins(env,
+      `🆕 新客自助建檔（待確認）\n姓名：${name}\n電話：${phone}\n請至後台客戶列表過目、指派調理師。`);
+  } catch (e) {}
+  return { bound: true, name, clientId: newId, created: true };
+}
+
+// 新客選「請專人協助」：只推播姓名／電話給調理師回撥，不建檔、不帶病歷
+async function handleRequestHelp(env, userId, p) {
+  const name = String(p.name || '').trim();
+  const phone = String(p.phone || '').trim();
+  try {
+    await notifyAdmins(env,
+      `🙋 新客請求專人協助建檔\n姓名：${name || '（未填）'}\n電話：${phone || '（未填）'}\n請主動聯繫這位客戶協助建檔。`);
+  } catch (e) { throw httpErr(502, '通知調理師失敗，請稍後再試或直接來電'); }
+  return { ok: true };
+}
+
 // 某調理師未來 N 天的可約時段（依節數過濾：塞得下整段＋前後緩衝才顯示）
 async function handleAvailability(env, userId, therapist, fromDate, days, sessionsRaw) {
   if (!therapist) throw httpErr(400, '請選擇調理師');
@@ -147,9 +207,12 @@ async function handleAvailability(env, userId, therapist, fromDate, days, sessio
   const template = await getDoc(env, `scheduleTemplate/${therapist}`).catch(() => null);
   const weekly = template ? parseWeekly(template.fields) : {};
 
-  // 只用等於條件查詢（免複合索引），狀態與時間範圍在記憶體過濾。
+  // 只撈「今日 00:00（台灣）以後」的預約參與衝突判定，省讀取。
+  // 需 Firestore 複合索引：bookings 的 therapist(升冪)＋start(升冪)。
+  const todayIso = startOfTodayTW().toISOString();
   const booked = await runQuery(env, 'bookings', [
     fieldFilter('therapist', 'EQUAL', strVal(therapist)),
+    fieldFilter('start', 'GREATER_THAN_OR_EQUAL', strVal(todayIso)),
   ]).catch(() => []);
   const busy = buildBusy(booked);
 
@@ -168,12 +231,13 @@ async function handleAvailability(env, userId, therapist, fromDate, days, sessio
       times = (weekly[dow] || []).slice();
     }
     times = [...new Set(times)].sort();
-    // 隱私：塞不下（撞既有預約±20分、跨午休、超過21:00）或已過期的時段
-    // 直接不送出，客戶端看不到、也推不出店內的預約狀況。
+    // 隱私：塞不下（撞既有預約±20分、跨午休、超過21:00）、已過期、
+    // 或已過線上預約截止（隔日時段每天21:00關）的時段直接不送出，
+    // 客戶端看不到、也推不出店內的預約狀況。
     const slots = times.map(hhmm => {
       const iso = twSlotIso(dateStr, hhmm);
       return { time: hhmm, start: iso, available: true };
-    }).filter(s => s.start && new Date(s.start) > new Date() && fitsRules(new Date(s.start).getTime(), dur, busy));
+    }).filter(s => s.start && new Date(s.start) > new Date() && !bookingClosed(s.start) && fitsRules(new Date(s.start).getTime(), dur, busy));
     if (slots.length) result.push({ date: dateStr, dow, slots });
   }
   return { therapist, days: result };
@@ -181,13 +245,17 @@ async function handleAvailability(env, userId, therapist, fromDate, days, sessio
 
 // 預約（原子鎖位）：doc id = {therapist}_{ISO} 已存在則失敗 ＝ 已被約
 // 狀態機：送出＝pending（待確認、時段即時鎖定），管理員核准後才 confirmed。
-async function handleBook(env, userId, therapist, startIso, sessionsRaw) {
+async function handleBook(env, userId, therapist, startIso, sessionsRaw, extrasRaw, extrasOther) {
   if (!therapist || !startIso) throw httpErr(400, '資料不完整');
   const client = await findClientByLineUser(env, userId);
   if (!client) throw httpErr(403, '尚未綁定客戶資料');
   const start = new Date(startIso);
   if (isNaN(start) || start <= new Date()) throw httpErr(400, '時段無效或已過期');
+  if (bookingClosed(startIso)) throw httpErr(400, '這個時段的線上預約已截止（每天 21:00 起關閉隔日時段），請直接聯繫調理師');
   const sessions = Math.min(Math.max(parseInt(sessionsRaw || 1, 10) || 1, 1), 2); // Phase 1 支援 1–2 節
+  const extras = Array.isArray(extrasRaw) ? extrasRaw.map(x => String(x)).filter(Boolean).slice(0, 20) : [];
+  const extraOther = String(extrasOther || '').trim().slice(0, 200);
+  const extrasText = [...extras, extraOther ? `其他：${extraOther}` : ''].filter(Boolean).join('、');
 
   // 送出當下重新驗證：整段（含前後 20 分緩衝）塞得下、不跨午休、不超過 21:00。
   // 防止客戶停在舊畫面點選早已不符的時段。
@@ -209,6 +277,8 @@ async function handleBook(env, userId, therapist, startIso, sessionsRaw) {
     start: strVal(startIso),
     end: strVal(endIso),
     sessions: { integerValue: String(sessions) },
+    extras: { arrayValue: { values: extras.map(strVal) } },   // 本次補充項目（服裝/電熱毯/毛巾…）
+    extrasOther: strVal(extraOther),
     groupId: { nullValue: null },    // 預留：雙人同行群組綁定（Phase 3）
     groupRole: { nullValue: null },  // 預留：primary／companion（Phase 3）
     status: strVal('pending'),
@@ -218,12 +288,19 @@ async function handleBook(env, userId, therapist, startIso, sessionsRaw) {
   const ok = await createIfAbsent(env, `bookings/${docId}`, fields);
   if (!ok) throw httpErr(409, '這個時段剛剛被預約走了，請選其他時段');
 
+  // 記住本次補充選項到客戶檔，下次預約自動帶入（失敗不影響預約）
+  try {
+    await patchDoc(env, `clients/${client.id}`,
+      { lastExtras: { arrayValue: { values: extras.map(strVal) } }, lastExtrasOther: strVal(extraOther) },
+      ['lastExtras', 'lastExtrasOther']);
+  } catch (e) {}
+
   // 在「鈞&萱」日曆建【待確認】事件（失敗不影響預約成立，只是日曆少一筆）
   try {
     const name = getStr(client.fields.name);
     const evId = await calCreate(env, {
       summary: `【待確認】${name}`,
-      description: `系統線上預約（待核准）\n調理師：${THERAPIST_NAME[therapist] || therapist}\n節數：${sessions} 節（${sessions * SESSION_MINUTES} 分鐘）\n客戶：${name}`,
+      description: `系統線上預約（待核准）\n調理師：${THERAPIST_NAME[therapist] || therapist}\n節數：${sessions} 節（${sessions * SESSION_MINUTES} 分鐘）\n客戶：${name}${extrasText ? '\n補充：' + extrasText : ''}`,
       startIso, endIso,
     });
     if (evId) await patchDoc(env, `bookings/${docId}`, { calendarEventId: strVal(evId) }, ['calendarEventId']);
@@ -233,7 +310,7 @@ async function handleBook(env, userId, therapist, startIso, sessionsRaw) {
   let adminNotified = true;
   try {
     await notifyAdmins(env,
-      `🔔 新預約待核准\n客戶：${getStr(client.fields.name)}\n調理師：${THERAPIST_NAME[therapist] || therapist}\n時間：${twDateTimeStr(start)}\n節數：${sessions} 節（${sessions * SESSION_MINUTES} 分鐘）\n\n👉 點此開後台核准／拒絕：\nhttps://a0985180305-dotcom.github.io/relax-clinic/?screen=bookings`);
+      `🔔 新預約待核准\n客戶：${getStr(client.fields.name)}\n調理師：${THERAPIST_NAME[therapist] || therapist}\n時間：${twDateTimeStr(start)}\n節數：${sessions} 節（${sessions * SESSION_MINUTES} 分鐘）${extrasText ? '\n補充：' + extrasText : ''}\n\n👉 點此開後台核准／拒絕：\nhttps://a0985180305-dotcom.github.io/relax-clinic/?screen=bookings`);
   } catch (e) { adminNotified = false; }
   return { ok: true, bookingId: docId, start: startIso, therapist, status: 'pending', adminNotified };
 }
@@ -263,6 +340,7 @@ async function handleCancel(env, userId, bookingId) {
   if (!b) throw httpErr(404, '預約不存在');
   if (getStr(b.fields.lineUserId) !== userId) throw httpErr(403, '無權取消此預約');
   if (new Date(getStr(b.fields.start)) <= new Date()) throw httpErr(400, '已過期的預約無法取消');
+  if (Date.now() >= dayBefore21Ms(getStr(b.fields.start))) throw httpErr(400, '距離預約已不到一天（前一日 21:00 後不可自行取消），請直接聯繫調理師');
   // 先刪日曆事件（失敗不影響取消本身）
   const evId = getStr(b.fields.calendarEventId);
   if (evId) { try { await calDelete(env, evId); } catch (e) {} }
@@ -441,6 +519,16 @@ async function findClientByLineUser(env, userId) {
   return rows[0] || null;
 }
 
+// 用電話查既有客戶（先精確比對 contact，再寬鬆比對數字子字串）。查無回 null。
+async function findClientByPhone(env, phone) {
+  const exact = await runQuery(env, 'clients', [fieldFilter('contact', 'EQUAL', strVal(phone))]).catch(() => []);
+  if (exact[0]) return exact[0];
+  const norm = normPhone(phone);
+  if (norm.length < 8) return null;
+  const all = await runQuery(env, 'clients', []).catch(() => []);
+  return all.find(c => normPhone(getStr(c.fields.contact)).includes(norm)) || null;
+}
+
 async function getDoc(env, path) {
   const token = await googleToken(env);
   const res = await fetch(`${FS_BASE(env)}/${path}`, { headers: { Authorization: `Bearer ${token}` } });
@@ -467,6 +555,19 @@ async function runQuery(env, collection, filters, opts = {}) {
     id: r.document.name.split('/').pop(),
     fields: r.document.fields || {},
   }));
+}
+
+// 建立文件（自動產生 id）— 回傳新文件 id。
+async function createDoc(env, collection, fields) {
+  const token = await googleToken(env);
+  const res = await fetch(`${FS_BASE(env)}/${collection}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields }),
+  });
+  if (!res.ok) throw httpErr(500, 'firestore create doc: ' + (await res.text()).slice(0, 200));
+  const d = await res.json();
+  return d.name ? d.name.split('/').pop() : null;
 }
 
 // 條件式建立（文件不存在才寫）— 用 commit + precondition exists:false
@@ -640,6 +741,32 @@ function twDateTimeStr(d) {
 function twSlotIso(dateStr, hhmm) {
   if (!/^\d{2}:\d{2}$/.test(hhmm)) return '';
   return new Date(`${dateStr}T${hhmm}:00+08:00`).toISOString();
+}
+// 某預約日「前一日 21:00（台灣）」的時間點 ＝ 當日 00:00 往前 3 小時。
+// 用途：預約截止（每天21:00關隔日）與取消截止共用同一條線。
+function dayBefore21Ms(startIso) {
+  const dateStr = twDateStr(new Date(startIso));                       // 預約當天(台灣)
+  const midnight = new Date(dateStr + 'T00:00:00+08:00').getTime();     // 當天 00:00
+  return midnight - 3 * 3600000;                                        // 前一日 21:00
+}
+// 線上預約是否已截止：今天的時段永遠開放（到時段時間）；未來的時段一過
+// 「前一日 21:00」就關閉。回 true＝已截止、不可線上預約。
+function bookingClosed(startIso) {
+  const dateStr = twDateStr(new Date(startIso));
+  const todayStr = twDateStr(new Date());
+  if (dateStr === todayStr) return false;
+  return Date.now() >= dayBefore21Ms(startIso);
+}
+// 由出生年月日(yyyy-mm-dd)換算年齡；無法解析回空字串。
+function ageFromBirthday(bd) {
+  const s = String(bd || '').trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '';
+  const now = new Date(Date.now() + 8 * 3600000);
+  let age = now.getUTCFullYear() - parseInt(m[1], 10);
+  const md = (now.getUTCMonth() + 1) * 100 + now.getUTCDate();
+  if (md < parseInt(m[2], 10) * 100 + parseInt(m[3], 10)) age--;
+  return age >= 0 && age < 130 ? String(age) : '';
 }
 
 // ───────────────────────────── HTTP helper ─────────────────────────────

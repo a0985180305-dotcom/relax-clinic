@@ -249,9 +249,10 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
     <div class="section-label">基本資料</div>
     <div class="field"><label>姓名 *</label><input id="nc-name" placeholder="客戶姓名" autocomplete="off"></div>
     <div class="row2">
-      <div class="field"><label>性別</label><select id="nc-gender"><option value="">—</option><option>女</option><option>男</option><option>其他</option></select></div>
+      <div class="field"><label>生理性別</label><select id="nc-gender"><option value="">—</option><option>女</option><option>男</option><option>其他</option></select></div>
       <div class="field"><label>年齡</label><input id="nc-age" type="number" placeholder="歲" min="1" max="120"></div>
     </div>
+    <div class="field"><label>出生年月日</label><input id="nc-birthday" type="date" onchange="syncAge('nc')"></div>
     <div class="field"><label>聯絡方式</label><input id="nc-contact" placeholder="電話 / LINE"></div>
     <div class="field"><label>職業 / 生活型態</label><input id="nc-job" placeholder="例：久坐辦公室、教師"></div>
   </div>
@@ -260,6 +261,7 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
     <div class="section-label">健康背景</div>
     <div class="field"><label>病史 / 手術史</label><textarea id="nc-history" placeholder="例：高血壓、2020年膝蓋手術…"></textarea></div>
     <div class="field"><label>目前用藥</label><input id="nc-meds" placeholder="若無請填「無」"></div>
+    <div class="field"><label>不想 / 不方便被碰的部位</label><input id="nc-avoid" placeholder="例：不碰腹部、右肩舊傷…"></div>
     <div class="field"><label>禁忌 / 特殊注意事項</label><textarea id="nc-contra" placeholder="例：孕期、骨質疏鬆、特定部位避免施力…" style="border-color:#e8b4ae;"></textarea></div>
   </div>
   <div class="divider"></div>
@@ -308,9 +310,10 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
     <div class="section-label">基本資料</div>
     <div class="field"><label>姓名 *</label><input id="ec-name" placeholder="客戶姓名" autocomplete="off"></div>
     <div class="row2">
-      <div class="field"><label>性別</label><select id="ec-gender"><option value="">—</option><option>女</option><option>男</option><option>其他</option></select></div>
+      <div class="field"><label>生理性別</label><select id="ec-gender"><option value="">—</option><option>女</option><option>男</option><option>其他</option></select></div>
       <div class="field"><label>年齡</label><input id="ec-age" type="number" placeholder="歲"></div>
     </div>
+    <div class="field"><label>出生年月日</label><input id="ec-birthday" type="date" onchange="syncAge('ec')"></div>
     <div class="field"><label>聯絡方式</label><input id="ec-contact" placeholder="電話 / LINE"></div>
     <div class="field"><label>職業 / 生活型態</label><input id="ec-job" placeholder="例：久坐辦公室、教師"></div>
   </div>
@@ -319,6 +322,7 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
     <div class="section-label">健康背景</div>
     <div class="field"><label>病史 / 手術史</label><textarea id="ec-history"></textarea></div>
     <div class="field"><label>目前用藥</label><input id="ec-meds" placeholder="若無請填「無」"></div>
+    <div class="field"><label>不想 / 不方便被碰的部位</label><input id="ec-avoid" placeholder="例：不碰腹部、右肩舊傷…"></div>
     <div class="field"><label>禁忌 / 特殊注意事項</label><textarea id="ec-contra" style="border-color:#e8b4ae;"></textarea></div>
   </div>
   <div class="divider"></div>
@@ -784,11 +788,12 @@ function renderList() {
     const cnt = c.sessions ? c.sessions.length : 0;
     const last = cnt ? '最近：'+fmt(c.sessions[cnt-1].date) : '尚無調理紀錄';
     const tag = c.therapist === 'glan' ? '<span class="therapist-tag tag-glan">鈞</span>' : c.therapist === 'xuan' ? '<span class="therapist-tag tag-xuan">萱</span>' : '';
+    const srTag = c.source === '自助待確認' ? '<span class="therapist-tag" style="background:#fff3cd;color:#8a6d1a;border-color:#f0d98a">待確認</span>' : '';
     const avClass = c.therapist === 'glan' ? 'avatar glan' : c.therapist === 'xuan' ? 'avatar xuan' : 'avatar';
     return `<div class="client-card" onclick="showProfile('${c.id}')">
       <div class="${avClass}">${initials(c.name)}</div>
       <div class="client-info">
-        <div class="client-name">${c.name}${tag}</div>
+        <div class="client-name">${c.name}${tag}${srTag}</div>
         <div class="client-meta">${c.age?c.age+'歲　':''}共 ${cnt} 次　${last}</div>
       </div>
       <span class="chevron">›</span>
@@ -807,8 +812,18 @@ window.selectSessionTherapist = (t) => {
   document.getElementById('sb-xuan').classList.toggle('on', t==='xuan');
 };
 
+window.syncAge = (pfx) => {
+  const bd = document.getElementById(pfx+'-birthday').value;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(bd);
+  if (!m) return;
+  const t = new Date();
+  let a = t.getFullYear() - (+m[1]);
+  if ((t.getMonth()+1)*100 + t.getDate() < (+m[2])*100 + (+m[3])) a--;
+  if (a>=0 && a<130) document.getElementById(pfx+'-age').value = a;
+};
+
 window.showNewClient = () => {
-  ['nc-name','nc-contact','nc-age','nc-job','nc-history','nc-meds','nc-contra','nc-assessment','nc-meridian','nc-direction'].forEach(id => document.getElementById(id).value='');
+  ['nc-name','nc-contact','nc-age','nc-birthday','nc-avoid','nc-job','nc-history','nc-meds','nc-contra','nc-assessment','nc-meridian','nc-direction'].forEach(id => document.getElementById(id).value='');
   document.getElementById('nc-gender').value='';
   clearChips('nc-constitution');
   document.getElementById('nc-alert').classList.remove('show');
@@ -826,8 +841,10 @@ window.saveNewClient = async () => {
       name, therapist: currentTherapist,
       gender: document.getElementById('nc-gender').value,
       age: document.getElementById('nc-age').value,
+      birthday: document.getElementById('nc-birthday').value,
       contact: document.getElementById('nc-contact').value,
       job: document.getElementById('nc-job').value,
+      avoid: document.getElementById('nc-avoid').value,
       history: document.getElementById('nc-history').value,
       meds: document.getElementById('nc-meds').value,
       contra: document.getElementById('nc-contra').value,
@@ -859,14 +876,16 @@ window.showProfile = (id) => {
   const avStyle = c.therapist==='glan'?'background:#e8f0ff;color:#3b5bdb;border-color:#b8c8f8':c.therapist==='xuan'?'background:#fce8f3;color:#c2255c;border-color:#f8b8d8':'';
   let html = `<div class="profile-header">
     <div class="profile-avatar" style="${avStyle}">${initials(c.name)}</div>
-    <div><div class="profile-name">${c.name}${tag}</div>
+    <div><div class="profile-name">${c.name}${tag}${c.source==='自助待確認'?'<span class="therapist-tag" style="background:#fff3cd;color:#8a6d1a;border-color:#f0d98a">待確認</span>':''}</div>
     <div class="profile-sub">${c.gender||''}${c.age?' · '+c.age+'歲':''}${c.job?' · '+c.job:''}</div></div>
   </div><div class="divider"></div>
   <div class="section"><div class="section-label">基本資料</div>
   <table class="info-table">
+  ${c.birthday?`<tr><td>出生年月日</td><td>${c.birthday}</td></tr>`:''}
   ${c.contact?`<tr><td>聯絡方式</td><td>${c.contact}</td></tr>`:''}
   ${c.history?`<tr><td>病史</td><td>${c.history}</td></tr>`:''}
   ${c.meds?`<tr><td>用藥</td><td>${c.meds}</td></tr>`:''}
+  ${c.avoid?`<tr><td>不想被碰部位</td><td class="caution">⚠ ${c.avoid}</td></tr>`:''}
   ${c.contra?`<tr><td>禁忌注意</td><td class="caution">⚠ ${c.contra}</td></tr>`:''}
   </table></div><div class="divider"></div>
   <div class="section"><div class="section-label">體質與調理方向</div>
@@ -999,8 +1018,10 @@ window.showEditClient = () => {
   document.getElementById('ec-name').value = c.name||'';
   document.getElementById('ec-gender').value = c.gender||'';
   document.getElementById('ec-age').value = c.age||'';
+  document.getElementById('ec-birthday').value = c.birthday||'';
   document.getElementById('ec-contact').value = c.contact||'';
   document.getElementById('ec-job').value = c.job||'';
+  document.getElementById('ec-avoid').value = c.avoid||'';
   document.getElementById('ec-history').value = c.history||'';
   document.getElementById('ec-meds').value = c.meds||'';
   document.getElementById('ec-contra').value = c.contra||'';
@@ -1032,8 +1053,10 @@ window.saveEditClient = async () => {
       name, therapist: currentTherapist,
       gender: document.getElementById('ec-gender').value,
       age: document.getElementById('ec-age').value,
+      birthday: document.getElementById('ec-birthday').value,
       contact: document.getElementById('ec-contact').value,
       job: document.getElementById('ec-job').value,
+      avoid: document.getElementById('ec-avoid').value,
       history: document.getElementById('ec-history').value,
       meds: document.getElementById('ec-meds').value,
       contra: document.getElementById('ec-contra').value,
