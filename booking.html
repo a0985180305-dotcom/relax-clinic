@@ -101,20 +101,36 @@ button,input,select{font:inherit;}button{cursor:pointer;}
 
   <!-- 綁定畫面 -->
   <div id="bind" class="screen">
-    <div class="topbar"><div><h1>歡迎</h1><div class="sub">首次使用請先綁定資料</div></div></div>
-    <div class="card" id="bind-card">
-      <div class="note" style="margin-bottom:14px">為了顯示您的方案次數與預約，請輸入<strong>調理時留的電話</strong>進行綁定。</div>
+    <div class="topbar"><div><h1>歡迎</h1><div class="sub">首次使用請先選擇</div></div></div>
+
+    <!-- 進場選擇：新客註冊 / 會員登入 / 專人協助 -->
+    <div class="card" id="entry-choice">
+      <button class="btn btn-primary" style="flex-direction:column;min-height:66px;line-height:1.35;margin-bottom:12px" onclick="showSelfReg()">
+        <div>🖊️ 我是新客，註冊建檔</div>
+        <small style="font-weight:400;opacity:.85">第一次來，線上填基本資料</small>
+      </button>
+      <button class="btn btn-ghost" style="flex-direction:column;min-height:66px;line-height:1.35;margin-bottom:16px" onclick="showLogin()">
+        <div>🔑 我是會員，登入</div>
+        <small style="font-weight:400;color:var(--text3)">用調理時留的電話綁定</small>
+      </button>
+      <div style="text-align:center;font-size:13px;color:var(--text2)">不方便自己填？<span onclick="showHelp()" style="color:var(--teal);font-weight:600;cursor:pointer">👉 請專人協助我建檔</span></div>
+    </div>
+
+    <!-- 會員登入（綁定電話） -->
+    <div class="card" id="bind-card" style="display:none">
+      <div class="note" style="margin-bottom:14px">請輸入<strong>調理時留的電話</strong>進行綁定，即可查看您的方案次數與預約。</div>
       <div class="field"><label>姓名（選填，加快比對）</label><input id="bind-name" placeholder="您的姓名"></div>
       <div class="field"><label>電話 *</label><input id="bind-phone" type="tel" inputmode="numeric" placeholder="例：0912345678"></div>
       <div id="bind-msg" class="note danger" style="display:none;margin-bottom:12px"></div>
-      <button class="btn btn-primary" id="bind-btn" onclick="doBindPhone()">綁定</button>
+      <button class="btn btn-primary" id="bind-btn" onclick="doBindPhone()">綁定登入</button>
+      <button class="btn btn-ghost" style="margin-top:10px" onclick="backToEntry()">返回</button>
     </div>
 
-    <!-- 查無電話時出現：新客的兩條路 -->
+    <!-- 查無電話時，在登入卡下方出現：改註冊 / 專人協助 -->
     <div class="card" id="selfreg-options" style="display:none">
       <div class="note warn" style="margin-bottom:12px">查不到這支電話的資料。如果您是<strong>第一次來</strong>，可以：</div>
-      <button class="btn btn-primary" style="margin-bottom:10px" onclick="showSelfReg()">🖊️ 我是新客，線上填資料建檔</button>
-      <button class="btn btn-ghost" id="help-btn" onclick="doRequestHelp()">🙋 請專人協助我建檔</button>
+      <button class="btn btn-primary" style="margin-bottom:10px" onclick="showSelfReg()">🖊️ 改用新客註冊建檔</button>
+      <button class="btn btn-ghost" id="help-btn" onclick="showHelp()">🙋 請專人協助我建檔</button>
     </div>
 
     <!-- 首次基本資料表單（點「線上建檔」才出現） -->
@@ -153,7 +169,25 @@ button,input,select{font:inherit;}button{cursor:pointer;}
       </div>
       <div id="sr-msg" class="note danger" style="display:none;margin-bottom:12px"></div>
       <button class="btn btn-primary" id="sr-btn" onclick="doSelfRegister()">送出建檔</button>
-      <button class="btn btn-ghost" style="margin-top:10px" onclick="cancelSelfReg()">返回</button>
+      <button class="btn btn-ghost" style="margin-top:10px" onclick="backToEntry()">返回</button>
+    </div>
+
+    <!-- 請專人協助：留姓名電話 -->
+    <div class="card" id="help-form" style="display:none">
+      <div class="note" style="margin-bottom:14px">留下您的姓名與電話，調理師會主動與您聯繫、協助建檔。</div>
+      <div class="field"><label>姓名 ＊</label><input id="help-name" placeholder="您的姓名"></div>
+      <div class="field"><label>電話 ＊</label><input id="help-phone" type="tel" inputmode="numeric" placeholder="例：0912345678"></div>
+      <div id="help-msg" class="note danger" style="display:none;margin-bottom:12px"></div>
+      <button class="btn btn-primary" id="help-send" onclick="sendHelp()">送出，請專人聯繫我</button>
+      <button class="btn btn-ghost" style="margin-top:10px" onclick="backToEntry()">返回</button>
+    </div>
+
+    <!-- 請專人協助 完成確認（大確認卡） -->
+    <div class="card" id="help-done" style="display:none;text-align:center;padding:36px 20px">
+      <div style="font-size:56px;line-height:1;margin-bottom:14px">✅</div>
+      <div style="font-size:18px;font-weight:700;margin-bottom:8px">已通知您的調理師</div>
+      <div style="color:var(--text2);font-size:14px">我們會盡快主動與您聯繫協助建檔，<br>請留意 LINE 訊息 🙏</div>
+      <button class="btn btn-ghost" style="margin-top:22px" onclick="backToEntry()">返回</button>
     </div>
   </div>
 
@@ -288,18 +322,39 @@ async function doBindPhone() {
       document.getElementById('sr-name').value = name;
       document.getElementById('sr-phone').value = phone;
     }
-  } finally { btn.disabled = false; btn.textContent = '綁定'; }
+  } finally { btn.disabled = false; btn.textContent = '綁定登入'; }
 }
 
-// ── 新客自助建檔 ──
-function showSelfReg() {
-  document.getElementById('bind-card').style.display = 'none';
-  document.getElementById('selfreg-options').style.display = 'none';
-  document.getElementById('selfreg-form').style.display = '';
+// ── 進場切換：註冊建檔 / 會員登入 / 專人協助（互斥顯示） ──
+const BIND_CARDS = ['entry-choice','bind-card','selfreg-options','selfreg-form','help-form','help-done'];
+function showBindCard(id) {
+  BIND_CARDS.forEach(c => document.getElementById(c).style.display = (c === id ? '' : 'none'));
 }
-function cancelSelfReg() {
-  document.getElementById('selfreg-form').style.display = 'none';
-  document.getElementById('bind-card').style.display = '';
+function backToEntry() { document.getElementById('bind-msg').style.display = 'none'; showBindCard('entry-choice'); }
+function showLogin() { showBindCard('bind-card'); }
+function showSelfReg() { showBindCard('selfreg-form'); }
+function showHelp() {
+  // 帶入前面已填過的姓名電話（登入卡或註冊表填過就沿用）
+  document.getElementById('help-name').value = document.getElementById('bind-name').value.trim() || document.getElementById('sr-name').value.trim();
+  document.getElementById('help-phone').value = document.getElementById('bind-phone').value.trim() || document.getElementById('sr-phone').value.trim();
+  document.getElementById('help-msg').style.display = 'none';
+  showBindCard('help-form');
+}
+async function sendHelp() {
+  const name = document.getElementById('help-name').value.trim();
+  const phone = document.getElementById('help-phone').value.trim();
+  const msg = document.getElementById('help-msg');
+  msg.style.display = 'none';
+  if (!name) { msg.textContent = '請填寫姓名'; msg.style.display = 'block'; return; }
+  if (!phone) { msg.textContent = '請填寫電話'; msg.style.display = 'block'; return; }
+  const btn = document.getElementById('help-send');
+  btn.disabled = true; btn.textContent = '送出中…';
+  try {
+    await api('requestHelp', { profile: { name, phone } });
+    showBindCard('help-done');   // 大確認卡（取代原本小提示）
+  } catch (e) {
+    msg.textContent = e.message; msg.style.display = 'block';
+  } finally { btn.disabled = false; btn.textContent = '送出，請專人聯繫我'; }
 }
 // 通用勾選晶片：切換選取；帶 data-other 的晶片同時控制對應「其他」輸入框顯示
 function tglChk(el) {
@@ -314,20 +369,6 @@ function pickSurgery(v) {
   srSurgery = v;
   document.querySelectorAll('#sr-surgery .chk').forEach(c => c.classList.toggle('on', c.dataset.v === v));
   document.getElementById('sr-surgery-parts').style.display = v === 'yes' ? '' : 'none';
-}
-
-async function doRequestHelp() {
-  const btn = document.getElementById('help-btn');
-  btn.disabled = true; btn.textContent = '通知中…';
-  try {
-    await api('requestHelp', { profile: {
-      name: document.getElementById('bind-name').value.trim(),
-      phone: document.getElementById('bind-phone').value.trim(),
-    }});
-    alertOk('已通知調理師，會盡快主動與您聯繫協助建檔 🙏');
-  } catch (e) {
-    alertOk(e.message, true);
-  } finally { btn.disabled = false; btn.textContent = '🙋 請專人協助我建檔'; }
 }
 
 async function doSelfRegister() {
