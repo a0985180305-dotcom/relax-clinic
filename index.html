@@ -417,12 +417,29 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
     <button class="btn btn-icon btn-ghost" onclick="goHome()">← 返回</button>
     <h1 id="profile-title"></h1>
     <div style="display:flex;gap:6px;">
+      <button class="btn btn-sm btn-primary" id="btn-confirm" style="display:none" onclick="openConfirmModal()">✓ 確認</button>
       <button class="btn btn-sm btn-ghost" onclick="showEditClient()">編輯</button>
       <button class="btn btn-sm btn-ghost" style="color:var(--red)" onclick="deleteClient()">刪除</button>
     </div>
   </div>
   <div id="profile-content"></div>
   <div id="profile-packages"></div>
+
+  <!-- 自助建檔「確認」彈窗：指定負責調理師＋清掉待確認 -->
+  <div class="loading-overlay hidden" id="confirm-modal" style="background:rgba(28,22,13,.45);z-index:1000">
+    <div style="background:var(--surface);border-radius:var(--radius-sm);padding:20px;width:calc(100% - 48px);max-width:340px;box-shadow:0 8px 30px rgba(28,22,13,.25)">
+      <div style="font-size:16px;font-weight:600;margin-bottom:6px">確認建檔</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:14px">請指定這位客戶的負責調理師，確認後會移除「待確認」標記。</div>
+      <div class="therapist-row" style="margin-bottom:16px">
+        <button class="therapist-btn glan" id="cf-glan" onclick="cfPick('glan')">鈞</button>
+        <button class="therapist-btn xuan" id="cf-xuan" onclick="cfPick('xuan')">萱</button>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" style="flex:1;justify-content:center" onclick="closeConfirmModal()">取消</button>
+        <button class="btn btn-primary btn-sm" style="flex:1;justify-content:center" id="cf-ok" onclick="doConfirmClient()">確認建檔</button>
+      </div>
+    </div>
+  </div>
   <div class="section">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
       <div class="section-label" style="margin:0; border:none; padding:0;">調理紀錄</div>
@@ -867,10 +884,36 @@ window.deleteClient = async () => {
   goHome();
 };
 
+// ── 自助建檔「確認」：指定負責調理師＋清掉待確認標記 ──
+let cfTher = '';
+window.openConfirmModal = () => {
+  const c = clients.find(x=>x.id===currentClientId);
+  cfTher = (c && (c.therapist==='glan'||c.therapist==='xuan')) ? c.therapist : '';
+  cfPickRender();
+  document.getElementById('confirm-modal').classList.remove('hidden');
+};
+window.closeConfirmModal = () => document.getElementById('confirm-modal').classList.add('hidden');
+window.cfPick = (t) => { cfTher = t; cfPickRender(); };
+function cfPickRender() {
+  document.getElementById('cf-glan').classList.toggle('on', cfTher==='glan');
+  document.getElementById('cf-xuan').classList.toggle('on', cfTher==='xuan');
+}
+window.doConfirmClient = async () => {
+  if (!cfTher) { alert('請先選擇負責調理師（鈞或萱）'); return; }
+  setSyncing(true);
+  try {
+    await updateDoc(doc(db,'clients',currentClientId), { therapist: cfTher, source: '' });
+  } finally { setSyncing(false); }
+  closeConfirmModal();
+  showProfile(currentClientId);
+};
+
 window.showProfile = (id) => {
   currentClientId = id;
   const c = clients.find(x=>x.id===id);
   if (!c) return;
+  // 自助建檔待確認的客戶才顯示「✓ 確認」鈕
+  document.getElementById('btn-confirm').style.display = (c.source==='自助待確認') ? '' : 'none';
   document.getElementById('profile-title').textContent = c.name;
   const tag = c.therapist==='glan'?'<span class="therapist-tag tag-glan">鈞</span>':c.therapist==='xuan'?'<span class="therapist-tag tag-xuan">萱</span>':'';
   const avStyle = c.therapist==='glan'?'background:#e8f0ff;color:#3b5bdb;border-color:#b8c8f8':c.therapist==='xuan'?'background:#fce8f3;color:#c2255c;border-color:#f8b8d8':'';
