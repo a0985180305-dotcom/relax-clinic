@@ -18,7 +18,7 @@
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 body{background:var(--bg);color:var(--text);font-family:"Noto Sans TC","Microsoft JhengHei",system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.6;min-height:100vh;}
 button,input,select{font:inherit;}button{cursor:pointer;}
-.app{max-width:520px;margin:0 auto;min-height:100vh;padding-bottom:76px;}
+.app{max-width:520px;margin:0 auto;min-height:100vh;padding-bottom:calc(76px + env(safe-area-inset-bottom));}
 .topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:8px;min-height:56px;padding:10px 16px;background:rgba(255,253,249,.96);border-bottom:1px solid var(--border);backdrop-filter:blur(10px);}
 .topbar h1{font-size:17px;font-weight:700;}
 .topbar .sub{color:var(--text3);font-size:12px;}
@@ -88,7 +88,8 @@ button,input,select{font:inherit;}button{cursor:pointer;}
 .tab .ic{font-size:20px;display:block;line-height:1.4;}
 .tab.on{color:var(--teal);font-weight:600;}
 .screen{display:none;}.screen.on{display:block;}
-.sticky-cta{position:fixed;bottom:64px;left:0;right:0;max-width:520px;margin:0 auto;padding:10px 16px;background:linear-gradient(transparent,var(--bg) 30%);}
+.sticky-cta{position:fixed;bottom:calc(72px + env(safe-area-inset-bottom));left:0;right:0;max-width:520px;margin:0 auto;padding:10px 16px;background:linear-gradient(transparent,var(--bg) 30%);z-index:15;}
+#s-book{padding-bottom:80px;}
 </style>
 </head>
 <body>
