@@ -13,9 +13,9 @@ compatibility_date = "2024-11-01"
 
 [vars]
 FIREBASE_PROJECT_ID = "relax-clinic"
-# LIFF 頁所在網域（CORS）。部署 booking.html 後填入，例如：
-# ALLOWED_ORIGIN = "https://relax-clinic.pages.dev"
-ALLOWED_ORIGIN = "*"
+# LIFF 頁所在網域（CORS）。只允許此網域的預約頁呼叫 Worker。
+# 若日後把頁面搬到別的網域，這裡要跟著改、再 wrangler deploy。
+ALLOWED_ORIGIN = "https://a0985180305-dotcom.github.io"
 # 共用日曆「鈞&萱」的日曆 ID（非機密）。服務帳號已被加入此日曆共用（權限：變更活動）。
 GOOGLE_CALENDAR_ID = "6na5qt4rs0gjrealc7r5o0oit8@group.calendar.google.com"
 

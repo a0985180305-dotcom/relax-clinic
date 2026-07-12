@@ -611,6 +611,13 @@ const auth = getAuth(app);
 
 // ══════════════ 預約 / 方案系統設定（部署後填入）══════════════
 const WORKER_URL = "https://booking-api.a0985180305.workers.dev"; // ← 部署 booking-worker.js 後的網址
+const CLINIC_ADDR = "嘉義市西區蘭井街248號5樓";
+const CLINIC_MAP = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(CLINIC_ADDR);
+// 產生「加入行事曆」.ics 連結（指向 Worker 的 GET /ics，純參數、不含姓名）
+function icsLink(b) {
+  const q = new URLSearchParams({ start: b.start, end: b.end || b.start, title: '經絡調理預約', loc: CLINIC_ADDR });
+  return WORKER_URL + '/ics?' + q.toString();
+}
 let THERAPIST_SHARED_SECRET = "";                                 // ← 登入後由 Firestore config/app 載入（不寫死在公開原始碼）
 const LIFF_ID = "2010520705-60EHkpbz";                            // ← 產生綁定連結用
 const PLAN_CONFIG = {
@@ -1580,7 +1587,7 @@ window.approveBooking = async (id) => {
     b.status = 'confirmed';
     try { await syncCalendar('confirm', id); } catch (e) {}
     if (b.lineUserId) {
-      try { await pushLine(b.lineUserId, `親愛的 ${b.clientName||''} 您好 🌿\n您的預約已確認！\n\n📅 時間：${fmtDT(b.start)}\n💆 調理師：${b.therapist==='glan'?'神藏':'神庭'}\n⏱ 節數：${b.sessions||1} 節（${(b.sessions||1)*50} 分鐘）\n\n如需取消或改期，可至「我的預約」操作，或直接訊息我們。期待見到您！`); } catch (e) {}
+      try { await pushLine(b.lineUserId, `親愛的 ${b.clientName||''} 您好 🌿\n您的預約已確認！\n\n📅 時間：${fmtDT(b.start)}\n💆 調理師：${b.therapist==='glan'?'神藏':'神庭'}\n⏱ 節數：${b.sessions||1} 節（${(b.sessions||1)*50} 分鐘）\n\n📍 地點：${CLINIC_ADDR}\n🗺 導航：${CLINIC_MAP}\n\n🌿 小提醒\n・提前 5 分鐘到，讓您從容放鬆\n・穿寬鬆、好活動的衣物\n・別太飽或太餓來喔\n・臨時想改期，先私訊我們就好\n\n📅 加入行事曆：\n${icsLink(b)}\n\n如需取消或改期，可至「我的預約」操作，或直接訊息我們。期待見到您！`); } catch (e) {}
     }
   } finally { setSyncing(false); }
   renderBookingsList();

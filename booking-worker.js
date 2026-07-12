@@ -40,6 +40,9 @@ const CAL_COLOR = { glan: '1', xuan: '9' };
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return cors(env, new Response(null, { status: 204 }));
+    // 公開 GET：加入行事曆 .ics（純參數產生，不查資料庫、不含姓名）
+    const url = new URL(request.url);
+    if (request.method === 'GET' && url.pathname === '/ics') return icsResponse(url.searchParams);
     if (request.method !== 'POST') return cors(env, json({ error: 'method' }, 405));
 
     let body;
@@ -781,6 +784,42 @@ function cors(env, res) {
   return new Response(res.body, { status: res.status, headers: h });
 }
 function httpErr(status, msg) { const e = new Error(msg); e.status = status; return e; }
+
+// ── 行事曆 .ics（GET /ics?start=&end=&title=&loc=）──
+// 純用網址參數產生，不查 Firestore、不含客人姓名（隱私安全）。
+function icsResponse(params) {
+  const ds = icsDate(params.get('start'));
+  const de = icsDate(params.get('end'));
+  if (!ds || !de) return new Response('bad params', { status: 400 });
+  const title = (params.get('title') || '經絡調理預約').slice(0, 100);
+  const loc = (params.get('loc') || '').slice(0, 200);
+  const esc = s => String(s).replace(/([,;\\])/g, '\\$1').replace(/\n/g, '\\n');
+  const body = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//relax-clinic//booking//TW', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    'UID:relax-' + ds + '@relax-clinic',
+    'DTSTAMP:' + icsDate(new Date().toISOString()),
+    'DTSTART:' + ds,
+    'DTEND:' + de,
+    'SUMMARY:' + esc(title),
+    loc ? 'LOCATION:' + esc(loc) : '',
+    'END:VEVENT', 'END:VCALENDAR',
+  ].filter(Boolean).join('\r\n');
+  return new Response(body, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/calendar; charset=utf-8',
+      'Content-Disposition': 'attachment; filename="booking.ics"',
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
+}
+// ISO 時間 → ICS 的 UTC 基本格式 YYYYMMDDTHHMMSSZ
+function icsDate(iso) {
+  const d = new Date(iso || '');
+  if (isNaN(d)) return '';
+  return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+}
 function b64url(bytes) {
   let s = btoa(String.fromCharCode(...bytes));
   return s.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
