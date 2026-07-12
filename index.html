@@ -221,6 +221,7 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
     <span class="filter-chip on" onclick="setFilter('all',this)">全部</span>
     <span class="filter-chip" onclick="setFilter('glan',this)">鈞</span>
     <span class="filter-chip" onclick="setFilter('xuan',this)">萱</span>
+    <span class="filter-chip" id="chip-pending" style="display:none;background:#fff3cd;color:#8a6d1a;border-color:#f0d98a" onclick="setFilter('pending',this)"></span>
   </div>
   <div style="display:flex;gap:8px;padding:0 16px 8px;">
     <button class="btn btn-sm btn-ghost" style="flex:1;" onclick="openBookings()">📅 預約管理</button>
@@ -796,7 +797,21 @@ function fmtDT(iso) {
 
 function renderList() {
   const el = document.getElementById('client-list');
-  let filtered = currentFilter === 'all' ? clients : clients.filter(c => c.therapist === currentFilter);
+  // 待確認（自助建檔）提醒籤：有幾筆顯示幾筆，點了只看待確認；全部確認完自動退回「全部」
+  const pendingCount = clients.filter(c => c.source === '自助待確認').length;
+  const chipP = document.getElementById('chip-pending');
+  if (pendingCount > 0) { chipP.style.display = ''; chipP.textContent = '🆕 待確認 ' + pendingCount; }
+  else {
+    chipP.style.display = 'none';
+    if (currentFilter === 'pending') {
+      currentFilter = 'all';
+      document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('on'));
+      document.querySelector('.filter-chip').classList.add('on');
+    }
+  }
+  let filtered = currentFilter === 'all' ? clients
+    : currentFilter === 'pending' ? clients.filter(c => c.source === '自助待確認')
+    : clients.filter(c => c.therapist === currentFilter);
   if (!filtered.length) {
     el.innerHTML = '<div class="empty-state"><div class="icon">🌿</div><p>尚無客戶紀錄</p></div>';
     return;
