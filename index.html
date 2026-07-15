@@ -226,8 +226,34 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
   <div style="display:flex;gap:8px;padding:0 16px 8px;">
     <button class="btn btn-sm btn-ghost" style="flex:1;" onclick="openBookings()">📅 預約管理</button>
     <button class="btn btn-sm btn-ghost" style="flex:1;" onclick="openSchedule()">🗓️ 班表設定</button>
+    <button class="btn btn-sm btn-ghost" style="flex:1;" onclick="openBMonth()">📷 B場地表</button>
   </div>
   <div class="list-wrap" id="client-list"></div>
+</div>
+
+<!-- B場地時間表 -->
+<div id="s-bmonth" class="screen">
+  <div class="topbar">
+    <button class="btn btn-icon btn-ghost" onclick="goHome()">← 返回</button>
+    <h1>B場地時間表</h1>
+    <button class="btn btn-sm btn-primary" onclick="downloadBImage()">下載圖片</button>
+  </div>
+  <div style="padding:12px 16px;display:flex;flex-direction:column;gap:10px;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <button class="btn btn-sm btn-ghost" onclick="bMonthNav(-1)">‹ 上月</button>
+      <div id="bmonth-label" style="flex:1;text-align:center;font-weight:500;"></div>
+      <button class="btn btn-sm btn-ghost" onclick="bMonthNav(1)">下月 ›</button>
+    </div>
+    <details style="border:0.5px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px;">
+      <summary style="cursor:pointer;font-size:13px;color:var(--text2);">顯示名字的夥伴名單（點開編輯）</summary>
+      <div style="margin-top:8px;font-size:12px;color:var(--text3);">一行一位，需與行事曆事件標題一致。不在名單的客人會顯示「已約」；標題含「休息」會顯示「無法預約」。</div>
+      <textarea id="bwl" style="width:100%;min-height:96px;margin-top:8px;" placeholder="喬心&小羅哥"></textarea>
+      <button class="btn btn-sm btn-ghost" onclick="saveBWhitelist()">儲存名單</button>
+    </details>
+    <button class="btn btn-primary btn-sm" onclick="genBMonth()">生成本月圖</button>
+    <div id="bmonth-msg" style="font-size:13px;color:var(--red);"></div>
+  </div>
+  <div id="bmonth-canvas" style="padding:0 16px 24px;"></div>
 </div>
 
 <!-- 新增客戶 -->
@@ -591,6 +617,7 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
 </div>
 </div><!-- /app-root -->
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
 import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, getDoc, setDoc, getDocs, query, where, orderBy } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
@@ -784,6 +811,134 @@ window.setFilter = (f, el) => {
 };
 
 window.toggleChip = (el) => el.classList.toggle('on');
+
+// ───────────── B場地時間表（讀 B 行事曆 → 產生給客戶的圖）─────────────
+let bY, bM, bWhitelist = [];
+const B_OPEN_DOW = { 1:true, 3:true, 5:true, 6:true };     // 一三五六開放
+const B_BANDS = [[540,720],[840,1200]];                    // 09-12、14-20（分鐘）
+const B_DOW = ['日','一','二','三','四','五','六'];
+function bEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function bHHMM(m){ return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0'); }
+
+window.openBMonth = async () => {
+  const now = new Date(); bY = now.getFullYear(); bM = now.getMonth()+1;
+  await loadBWhitelist();
+  updateBMonthLabel();
+  document.getElementById('bmonth-msg').textContent = '';
+  document.getElementById('bmonth-canvas').innerHTML = '<div style="text-align:center;color:var(--text3);padding:24px;">選好月份後按「生成本月圖」</div>';
+  show('s-bmonth');
+};
+window.bMonthNav = (d) => { bM += d; if(bM<1){bM=12;bY--;} if(bM>12){bM=1;bY++;} updateBMonthLabel(); };
+function updateBMonthLabel(){ document.getElementById('bmonth-label').textContent = bY+' 年 '+bM+' 月'; }
+
+async function loadBWhitelist(){
+  try { const snap = await getDoc(doc(db,'scheduleTemplate','bWhitelist')); const arr = snap.exists() && snap.data().names; if(Array.isArray(arr)) bWhitelist = arr; } catch(e){}
+  document.getElementById('bwl').value = bWhitelist.join('\n');
+}
+window.saveBWhitelist = async () => {
+  bWhitelist = document.getElementById('bwl').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  setSyncing(true);
+  try { await setDoc(doc(db,'scheduleTemplate','bWhitelist'), { names: bWhitelist }, { merge:true }); alert('名單已儲存'); }
+  finally { setSyncing(false); }
+};
+
+window.genBMonth = async () => {
+  const msg = document.getElementById('bmonth-msg'); msg.textContent = '';
+  if(!THERAPIST_SHARED_SECRET){ msg.textContent = '設定尚未載入，請重新登入後台再試'; return; }
+  const canvas = document.getElementById('bmonth-canvas');
+  canvas.innerHTML = '<div style="text-align:center;color:var(--text3);padding:24px;">生成中…</div>';
+  try {
+    const res = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'bMonth', secret: THERAPIST_SHARED_SECRET, year: bY, month: bM }) });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || '讀取失敗');
+    renderBMonth(data.events || []);
+  } catch(e){ canvas.innerHTML=''; msg.textContent = '生成失敗：'+e.message; }
+};
+
+function bClassify(title){
+  if(/休息|不開放/.test(title)) return { type:'block' };
+  if(bWhitelist.some(n => title===n || (n && title.includes(n)))) return { type:'name', label:title };
+  return { type:'booked' };
+}
+function bFree(busy){
+  let free = B_BANDS.map(b=>({s:b[0],e:b[1]}));
+  for(const b of busy){
+    const nx=[];
+    for(const f of free){
+      if(b.e<=f.s || b.s>=f.e){ nx.push(f); continue; }
+      if(b.s>f.s) nx.push({s:f.s,e:b.s});
+      if(b.e<f.e) nx.push({s:b.e,e:f.e});
+    }
+    free = nx.filter(f => f.e-f.s >= 30);
+  }
+  return free;
+}
+function bRow(t,right){ return '<div style="display:flex;justify-content:space-between;"><span style="color:#655f56;">'+t+'</span>'+right+'</div>'; }
+function bClosedRow(label){ return '<div style="background:#f1efe8;border:0.5px solid #ded7ca;border-radius:12px;padding:10px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;"><span style="font-size:16px;font-weight:500;color:#938b7f;">'+label+'</span><span style="font-size:14px;color:#938b7f;">整天無法預約</span></div>'; }
+function bOpenCard(label, evs){
+  const items = [], busy = [];
+  for(const ev of evs){
+    busy.push({s:ev.s,e:ev.e});
+    const c = bClassify(ev.title);
+    let right;
+    if(c.type==='name') right = '<span style="color:#2d7d6f;font-weight:500;">'+bEsc(c.label)+'</span>';
+    else if(c.type==='block') right = '<span style="color:#8a6d1a;font-weight:500;">休息</span>';
+    else right = '<span style="color:#938b7f;">已約</span>';
+    items.push({ s:ev.s, html: bRow(bHHMM(ev.s)+'–'+bHHMM(ev.e), right) });
+  }
+  for(const f of bFree(busy)) items.push({ s:f.s, html: bRow(bHHMM(f.s)+'–'+bHHMM(f.e), '<span style="color:#2f8f4f;font-weight:500;">可約</span>') });
+  items.sort((a,b)=>a.s-b.s);
+  let inner = items.map(i=>i.html).join('');
+  if(!inner) inner = bRow('整天','<span style="color:#2f8f4f;font-weight:500;">可約　歡迎揪伴</span>');
+  return '<div style="background:#fff;border:0.5px solid #ded7ca;border-radius:12px;padding:12px 14px;margin-bottom:8px;"><div style="font-size:16px;font-weight:500;color:#1f1c18;margin-bottom:8px;">'+label+'</div><div style="display:flex;flex-direction:column;gap:6px;font-size:15px;">'+inner+'</div></div>';
+}
+function renderBMonth(events){
+  const byDay = {};
+  for(const ev of events){
+    if(!ev.start) continue;
+    const d = new Date(ev.start);
+    const key = d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate();
+    const s = d.getHours()*60 + d.getMinutes();
+    const ed = ev.end ? new Date(ev.end) : null;
+    const e = ed ? ed.getHours()*60 + ed.getMinutes() : s+60;
+    (byDay[key] = byDay[key] || []).push({ s, e, title:(ev.title||'').trim() });
+  }
+  const daysInMonth = new Date(bY, bM, 0).getDate();
+  let cards = '';
+  for(let day=1; day<=daysInMonth; day++){
+    const dt = new Date(bY, bM-1, day);
+    const dow = dt.getDay();
+    const label = bM+'/'+day+'　週'+B_DOW[dow];
+    if(!B_OPEN_DOW[dow]){ cards += bClosedRow(label); continue; }
+    const evs = (byDay[bY+'-'+bM+'-'+day] || []).sort((a,b)=>a.s-b.s);
+    cards += bOpenCard(label, evs);
+  }
+  document.getElementById('bmonth-canvas').innerHTML =
+    '<div id="bmonth-image" style="background:#fffdf9;border-radius:16px;padding:18px;max-width:420px;margin:0 auto;">'
+    + '<div style="text-align:center;margin-bottom:6px;"><div style="font-size:20px;font-weight:600;color:#1f1c18;">B場地 · '+bM+'月 調理時間表</div>'
+    + '<div style="font-size:12px;color:#938b7f;margin-top:4px;">開放：一、三、五、六　上午9–12　下午2–8</div></div>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:10px 0 14px;">'
+    + '<span style="font-size:12px;padding:3px 10px;border-radius:999px;background:#e7f3ee;color:#2d7d6f;">夥伴姓名</span>'
+    + '<span style="font-size:12px;padding:3px 10px;border-radius:999px;background:#eee9df;color:#655f56;">已約</span>'
+    + '<span style="font-size:12px;padding:3px 10px;border-radius:999px;background:#e6f5ec;color:#2f8f4f;">可約</span>'
+    + '<span style="font-size:12px;padding:3px 10px;border-radius:999px;background:#fff3dc;color:#8a6d1a;">休息/無法</span></div>'
+    + cards
+    + '<div style="text-align:center;font-size:12px;color:#938b7f;margin-top:12px;">有事想調時間，群組裡互相喬一下就好 · 看到「可約」歡迎揪親友</div></div>';
+}
+
+window.downloadBImage = async () => {
+  const el = document.getElementById('bmonth-image');
+  if(!el){ alert('請先按「生成本月圖」'); return; }
+  if(typeof html2canvas !== 'function'){ alert('出圖元件未載入，請直接用手機截圖'); return; }
+  try {
+    const canvas = await html2canvas(el, { backgroundColor:'#fffdf9', scale:2 });
+    const a = document.createElement('a');
+    a.download = 'B場地_'+bY+'-'+bM+'.png';
+    a.href = canvas.toDataURL('image/png');
+    a.click();
+  } catch(e){ alert('出圖失敗，請直接用手機截圖：'+e.message); }
+};
 
 function getChips(id) {
   return Array.from(document.querySelectorAll('#'+id+' .chip.on')).map(c=>c.textContent).join('、');

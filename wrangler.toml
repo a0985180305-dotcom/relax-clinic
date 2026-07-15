@@ -18,6 +18,8 @@ FIREBASE_PROJECT_ID = "relax-clinic"
 ALLOWED_ORIGIN = "https://a0985180305-dotcom.github.io"
 # 共用日曆「鈞&萱」的日曆 ID（非機密）。服務帳號已被加入此日曆共用（權限：變更活動）。
 GOOGLE_CALENDAR_ID = "6na5qt4rs0gjrealc7r5o0oit8@group.calendar.google.com"
+# B 場地（另一處調理地點）的行事曆 ID。服務帳號需被加進此日曆共用（查看權限）。
+GOOGLE_CALENDAR_ID_B = "b4d64e08f35f5361f7472e8e431ca2ae6430dbb5cb4ecfcac1301cd1023981e0@group.calendar.google.com"
 
 # ── 以下為「機密」，請用指令設定，不要寫進檔案 ──
 # wrangler secret put FIREBASE_CLIENT_EMAIL

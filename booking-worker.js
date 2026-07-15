@@ -63,6 +63,12 @@ export default {
         return cors(env, json(await handleAdminCalendar(env, body.op, body.bookingId)));
       }
 
+      // 後台專用：讀「B 場地」行事曆某個月的事件（產生給客戶的時間表圖）
+      if (action === 'bMonth') {
+        requireSecret(body, env);
+        return cors(env, json(await handleBMonth(env, body.year, body.month)));
+      }
+
       // 以下皆客戶端：需 LINE 身分
       const userId = await verifyLineUser(env, body.idToken);
 
@@ -387,6 +393,18 @@ async function handleAdminCalendar(env, op, bookingId) {
   throw httpErr(400, '未知的日曆操作');
 }
 
+// 後台專用：讀 B 場地行事曆某個月的事件（回原始事件，姓名過濾在後台端做）
+async function handleBMonth(env, year, month) {
+  const y = parseInt(year, 10), m = parseInt(month, 10);
+  if (!y || !m || m < 1 || m > 12) throw httpErr(400, '月份無效');
+  const pad = n => String(n).padStart(2, '0');
+  const timeMin = `${y}-${pad(m)}-01T00:00:00+08:00`;
+  const ny = m === 12 ? y + 1 : y, nm = m === 12 ? 1 : m + 1;
+  const timeMax = `${ny}-${pad(nm)}-01T00:00:00+08:00`;
+  const events = await calList(env, env.GOOGLE_CALENDAR_ID_B, timeMin, timeMax);
+  return { year: y, month: m, events };
+}
+
 // ───────────────────────────── 工具：方案 ─────────────────────────────
 function activePackages(packagesField) {
   const arr = getArr(packagesField) || [];
@@ -670,6 +688,24 @@ async function calDelete(env, eventId) {
   if (!res.ok && res.status !== 404 && res.status !== 410) {
     throw httpErr(502, 'calendar delete: ' + (await res.text()).slice(0, 200));
   }
+}
+
+// 讀某本日曆在時間範圍內的事件（singleEvents 展開週期性事件、依開始時間排序）
+async function calList(env, calendarId, timeMin, timeMax) {
+  if (!calendarId) return [];
+  const token = await googleToken(env);
+  const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`
+    + `?singleEvents=true&orderBy=startTime&maxResults=2500`
+    + `&timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw httpErr(502, 'calendar list: ' + (await res.text()).slice(0, 200));
+  const data = await res.json();
+  return (data.items || []).map(ev => ({
+    title: ev.summary || '',
+    start: (ev.start && (ev.start.dateTime || ev.start.date)) || '',
+    end: (ev.end && (ev.end.dateTime || ev.end.date)) || '',
+    allDay: !!(ev.start && ev.start.date && !ev.start.dateTime),
+  }));
 }
 
 // ── Google 服務帳號 → OAuth2 access token（RS256 JWT，WebCrypto） ──
