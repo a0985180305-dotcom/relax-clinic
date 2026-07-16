@@ -845,6 +845,8 @@ window.saveBWhitelist = async () => {
 window.genBMonth = async () => {
   const msg = document.getElementById('bmonth-msg'); msg.textContent = '';
   if(!THERAPIST_SHARED_SECRET){ msg.textContent = '設定尚未載入，請重新登入後台再試'; return; }
+  // 直接以「名單框」當下內容為準（打了就算數，不必先按儲存）
+  bWhitelist = document.getElementById('bwl').value.split('\n').map(s=>s.trim()).filter(Boolean);
   const canvas = document.getElementById('bmonth-canvas');
   canvas.innerHTML = '<div style="text-align:center;color:var(--text3);padding:24px;">生成中…</div>';
   try {
