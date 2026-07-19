@@ -820,10 +820,10 @@ const B_DOW = ['日','一','二','三','四','五','六'];
 function bEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function bHHMM(m){ return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0'); }
 // 速覽用的白話時段：540→「上午9」、840–960→「下午2–4」
-function bBandText(f){
-  const toH = m => { const h=Math.floor(m/60), mm=m%60, hh = h>12 ? h-12 : h; return mm ? hh+':'+String(mm).padStart(2,'0') : String(hh); };
-  return (f.s < 720 ? '上午' : '下午') + toH(f.s) + '–' + toH(f.e);
-}
+function b12(m){ const h=Math.floor(m/60), mm=m%60, hh = h>12 ? h-12 : h; return mm ? hh+':'+String(mm).padStart(2,'0') : String(hh); }
+function bBandText(f){ return (f.s < 720 ? '上午' : '下午') + b12(f.s) + '–' + b12(f.e); }
+// 月曆格子用的短寫：840–960→「2–4」、870–1050→「2:30–5:30」
+function bShort(f){ return b12(f.s) + '–' + b12(f.e); }
 
 window.openBMonth = async () => {
   const now = new Date(); bY = now.getFullYear(); bM = now.getMonth()+1;
@@ -863,9 +863,17 @@ window.genBMonth = async () => {
   } catch(e){ canvas.innerHTML=''; msg.textContent = '生成失敗：'+e.message; }
 };
 
+const B_THERS = ['神藏','神庭'];
 function bParse(title){
   const s = String(title==null?'':title).trim();
-  const i = s.search(/[:：]/);                      // 支援「老師：客人」半形或全形冒號
+  // 優先認「老師名開頭」，後面接冒號/減號/空格都算（神藏：婉玲、神藏-喬心、神庭 小涵）
+  for(const t of B_THERS){
+    if(s.startsWith(t)){
+      const rest = s.slice(t.length).replace(/^[\s:：\-－–—、,]+/, '').trim();
+      if(rest) return { ther:t, name:rest };
+    }
+  }
+  const i = s.search(/[:：]/);
   if(i>=0) return { ther: s.slice(0,i).trim(), name: s.slice(i+1).trim() };
   return { ther:'', name:s };
 }
@@ -918,57 +926,56 @@ function renderBMonth(events){
     const e = ed ? ed.getHours()*60 + ed.getMinutes() : s+60;
     (byDay[key] = byDay[key] || []).push({ s, e, title:(ev.title||'').trim() });
   }
+  // 只排「一、三、五、六」四欄；二、四、日整欄不出現
+  const B_COLS = [1,3,5,6];
   const daysInMonth = new Date(bY, bM, 0).getDate();
-  let cards = '';
-  const freeSummary = [];   // 可約速覽
-  const byPerson = {};      // 夥伴 → 他的時段
+  const first = new Date(bY, bM-1, 1).getDay();
+  const rows = [];
   for(let day=1; day<=daysInMonth; day++){
-    const dt = new Date(bY, bM-1, day);
-    const dow = dt.getDay();
-    const label = bM+'/'+day+'　週'+B_DOW[dow];
-    if(!B_OPEN_DOW[dow]){ cards += bClosedRow(label); continue; }
-    const evs = (byDay[bY+'-'+bM+'-'+day] || []).sort((a,b)=>a.s-b.s);
-    cards += bOpenCard(label, evs);
-    const dayTag = bM+'/'+day+'（'+B_DOW[dow]+'）';
-    const free = bFree(evs.map(e=>({s:e.s,e:e.e})));
-    if(!evs.length) freeSummary.push(dayTag+'整天');
-    else if(free.length) freeSummary.push(dayTag+free.map(bBandText).join('、'));
-    for(const ev of evs){
-      const c = bClassify(ev.title);
-      if(c.type!=='name') continue;
-      (byPerson[c.label] = byPerson[c.label] || []).push(dayTag+bBandText({s:ev.s,e:ev.e})+(c.ther?'（'+bEsc(c.ther)+'）':''));
-    }
+    const dow = new Date(bY, bM-1, day).getDay();
+    const col = B_COLS.indexOf(dow);
+    if(col < 0) continue;
+    const w = Math.floor((day - 1 + first) / 7);
+    if(!rows[w]) rows[w] = [null,null,null,null];
+    rows[w][col] = bGridCell(day, (byDay[bY+'-'+bM+'-'+day] || []).sort((a,b)=>a.s-b.s));
   }
-  const persons = Object.keys(byPerson).sort((a,b)=>{
-    const ia = bWhitelist.findIndex(n=>a===n||a.includes(n)), ib = bWhitelist.findIndex(n=>b===n||b.includes(n));
-    return (ia<0?99:ia)-(ib<0?99:ib);
-  });
-  const freeHtml = freeSummary.length
-    ? '<div style="background:#e6f5ec;border-radius:12px;padding:12px 14px;margin-bottom:14px;">'
-      + '<div style="font-size:14px;font-weight:600;color:#2f8f4f;margin-bottom:6px;">🌿 本月還有空　歡迎揪親友</div>'
-      + '<div style="font-size:14px;color:#2f6b45;line-height:1.7;">'+freeSummary.join('<br>')+'</div></div>'
-    : '';
-  const personHtml = persons.length
-    ? '<div style="font-size:14px;font-weight:600;color:#1f1c18;margin:0 0 8px;">夥伴們的時間</div>'
-      + persons.map(p => '<div style="background:#fff;border:0.5px solid #ded7ca;border-radius:12px;padding:10px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">'
-        + '<span style="font-size:15px;font-weight:500;color:#2d7d6f;white-space:nowrap;">'+bEsc(p)+'</span>'
-        + '<span style="font-size:14px;color:#655f56;text-align:right;line-height:1.6;">'+byPerson[p].join('<br>')+'</span></div>').join('')
-    : '';
+  const empty = '<div style="min-height:66px;"></div>';
+  const head = ['一','三','五','六'].map(d =>
+    '<div style="text-align:center;font-size:12px;font-weight:600;color:#655f56;padding:2px 0;">週'+d+'</div>').join('');
+  const body = rows.filter(Boolean).map(r => r.map(c => c || empty).join('')).join('');
   document.getElementById('bmonth-canvas').innerHTML =
-    '<div id="bmonth-image" style="background:#fffdf9;border-radius:16px;padding:18px;max-width:420px;margin:0 auto;">'
-    + '<div style="text-align:center;margin-bottom:12px;"><div style="font-size:20px;font-weight:600;color:#1f1c18;">B場地 · '+bM+'月 調理時間表</div>'
-    + '<div style="font-size:12px;color:#938b7f;margin-top:4px;">開放：一、三、五、六　上午9–12　下午2–8</div></div>'
-    + freeHtml
-    + personHtml
-    + '<div style="border-top:1px dashed #ded7ca;margin:14px 0 12px;"></div>'
-    + '<div style="font-size:14px;font-weight:600;color:#1f1c18;margin-bottom:8px;">逐日明細</div>'
-    + '<div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:0 0 12px;">'
-    + '<span style="font-size:12px;padding:3px 10px;border-radius:999px;background:#e7f3ee;color:#2d7d6f;">夥伴姓名</span>'
-    + '<span style="font-size:12px;padding:3px 10px;border-radius:999px;background:#eee9df;color:#655f56;">已約</span>'
-    + '<span style="font-size:12px;padding:3px 10px;border-radius:999px;background:#e6f5ec;color:#2f8f4f;">可約</span>'
-    + '<span style="font-size:12px;padding:3px 10px;border-radius:999px;background:#fff3dc;color:#8a6d1a;">休息/無法</span></div>'
-    + cards
-    + '<div style="text-align:center;font-size:12px;color:#938b7f;margin-top:12px;">每週二、四、日不開放 · 有事想調時間，群組裡互相喬一下就好</div></div>';
+    '<div id="bmonth-image" style="background:#fffdf9;border-radius:16px;padding:16px;max-width:420px;margin:0 auto;">'
+    + '<div style="text-align:center;margin-bottom:10px;"><div style="font-size:19px;font-weight:600;color:#1f1c18;">B場地 · '+bM+'月 調理時間表</div>'
+    + '<div style="font-size:12px;color:#938b7f;margin-top:4px;">只開放 週一、三、五、六（二、四、日不開放）</div>'
+    + '<div style="font-size:12px;color:#938b7f;">上午 9–12　下午 2–8</div></div>'
+    + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;">'+head+body+'</div>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:12px;">'
+    + '<span style="font-size:11px;padding:2px 9px;border-radius:999px;background:#e7f3ee;color:#2d7d6f;">神藏</span>'
+    + '<span style="font-size:11px;padding:2px 9px;border-radius:999px;background:#fce8f3;color:#c2255c;">神庭</span>'
+    + '<span style="font-size:11px;padding:2px 9px;border-radius:999px;background:#e6f5ec;color:#2f8f4f;">可約</span>'
+    + '<span style="font-size:11px;padding:2px 9px;border-radius:999px;background:#eee9df;color:#655f56;">已約</span>'
+    + '<span style="font-size:11px;padding:2px 9px;border-radius:999px;background:#fff3dc;color:#8a6d1a;">休息</span></div>'
+    + '<div style="text-align:center;font-size:11px;color:#938b7f;margin-top:10px;">有事想調時間，群組裡互相喬一下就好 · 看到「可約」歡迎揪親友</div></div>';
+}
+
+// 月曆單格：日期＋當天每段時間（夥伴名字依老師上色／已約／休息／可約）
+function bGridCell(day, evs){
+  const items = [], busy = [];
+  for(const ev of evs){
+    busy.push({s:ev.s, e:ev.e});
+    const c = bClassify(ev.title);
+    let txt;
+    if(c.type === 'name') txt = '<span style="color:'+(c.ther==='神庭'?'#c2255c':'#2d7d6f')+';font-weight:500;">'+bEsc(c.label)+'</span>';
+    else if(c.type === 'block') txt = '<span style="color:#8a6d1a;">休息</span>';
+    else txt = '<span style="color:#938b7f;">已約</span>';
+    items.push({ s:ev.s, html:'<div style="font-size:10px;line-height:1.35;margin-top:2px;"><span style="color:#a8a096;">'+bShort({s:ev.s,e:ev.e})+'</span> '+txt+'</div>' });
+  }
+  for(const f of bFree(busy))
+    items.push({ s:f.s, html:'<div style="font-size:10px;line-height:1.35;margin-top:2px;"><span style="color:#a8a096;">'+bShort(f)+'</span> <span style="color:#2f8f4f;font-weight:500;">可約</span></div>' });
+  items.sort((a,b)=>a.s-b.s);
+  return '<div style="background:#fff;border:0.5px solid #ded7ca;border-radius:8px;padding:5px 6px;min-height:66px;">'
+    + '<div style="font-size:12px;font-weight:600;color:#1f1c18;">'+day+'</div>'
+    + items.map(i=>i.html).join('') + '</div>';
 }
 
 window.downloadBImage = async () => {
