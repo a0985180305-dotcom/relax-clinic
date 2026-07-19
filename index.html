@@ -818,6 +818,7 @@ let bY, bM, bWhitelist = [];
 let bRawEvents = [], bSelDay = null, bEditId = null;   // 排班面板用
 const B_OPEN_DOW = { 1:true, 3:true, 5:true, 6:true };     // 一三五六開放
 const B_BANDS = [[540,720],[840,1200]];                    // 09-12、14-20（分鐘）
+const B_MIN_FREE = 60;                                     // 一節60分：短於此的零碎空檔不顯示為可約
 const B_DOW = ['日','一','二','三','四','五','六'];
 function bEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function bHHMM(m){ return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0'); }
@@ -897,7 +898,7 @@ function bFree(busy){
       if(b.s>f.s) nx.push({s:f.s,e:b.s});
       if(b.e<f.e) nx.push({s:b.e,e:f.e});
     }
-    free = nx.filter(f => f.e-f.s >= 30);
+    free = nx.filter(f => f.e-f.s >= B_MIN_FREE);   // 塞不下一節(60分)的零碎縫不顯示
   }
   return free;
 }
