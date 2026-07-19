@@ -253,7 +253,8 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
     <button class="btn btn-primary btn-sm" onclick="genBMonth()">生成本月圖</button>
     <div id="bmonth-msg" style="font-size:13px;color:var(--red);"></div>
   </div>
-  <div id="bmonth-canvas" style="padding:0 16px 24px;"></div>
+  <div id="bmonth-canvas" style="padding:0 16px 12px;"></div>
+  <div id="bday-editor" style="padding:0 16px 24px;display:none;"></div>
 </div>
 
 <!-- 新增客戶 -->
@@ -814,6 +815,7 @@ window.toggleChip = (el) => el.classList.toggle('on');
 
 // ───────────── B場地時間表（讀 B 行事曆 → 產生給客戶的圖）─────────────
 let bY, bM, bWhitelist = [];
+let bRawEvents = [], bSelDay = null, bEditId = null;   // 排班面板用
 const B_OPEN_DOW = { 1:true, 3:true, 5:true, 6:true };     // 一三五六開放
 const B_BANDS = [[540,720],[840,1200]];                    // 09-12、14-20（分鐘）
 const B_DOW = ['日','一','二','三','四','五','六'];
@@ -861,7 +863,8 @@ window.genBMonth = async () => {
       body: JSON.stringify({ action:'bMonth', secret: THERAPIST_SHARED_SECRET, year: bY, month: bM }) });
     const data = await res.json();
     if(!res.ok) throw new Error(data.error || '讀取失敗');
-    renderBMonth(data.events || []);
+    bRawEvents = data.events || [];
+    renderBMonth(bRawEvents);
   } catch(e){ canvas.innerHTML=''; msg.textContent = '生成失敗：'+e.message; }
 };
 
@@ -972,9 +975,148 @@ function bGridCell(day, evs){
   for(const f of bFree(busy))
     items.push({ s:f.s, html:'<div style="font-size:10px;line-height:1.35;margin-top:2px;"><span style="color:#a8a096;">'+bShort(f)+'</span> <span style="color:#2f8f4f;font-weight:500;">可約</span></div>' });
   items.sort((a,b)=>a.s-b.s);
-  return '<div style="background:#fff;border:0.5px solid #ded7ca;border-radius:8px;padding:5px 6px;min-height:66px;">'
+  return '<div onclick="bOpenDay('+day+')" style="background:#fff;border:0.5px solid #ded7ca;border-radius:8px;padding:5px 6px;min-height:66px;cursor:pointer;">'
     + '<div style="font-size:12px;font-weight:600;color:#1f1c18;">'+day+'</div>'
     + items.map(i=>i.html).join('') + '</div>';
+}
+
+// ───────────── B場地排班面板（直接寫回同一本 Google 行事曆）─────────────
+function bLocalIso(day, min){
+  const p = n => String(n).padStart(2,'0');
+  return bY+'-'+p(bM)+'-'+p(day)+'T'+p(Math.floor(min/60))+':'+p(min%60)+':00';
+}
+function bDayEvents(day){
+  const out = [];
+  for(const ev of bRawEvents){
+    if(!ev.start) continue;
+    const d = new Date(ev.start);
+    if(d.getFullYear()!==bY || (d.getMonth()+1)!==bM || d.getDate()!==day) continue;
+    const s = d.getHours()*60 + d.getMinutes();
+    const ed = ev.end ? new Date(ev.end) : null;
+    out.push({ id:ev.id, recurring:!!ev.recurring, title:(ev.title||'').trim(), s, e: ed ? ed.getHours()*60+ed.getMinutes() : s+60 });
+  }
+  return out.sort((a,b)=>a.s-b.s);
+}
+window.bOpenDay = (day) => {
+  bSelDay = day; bEditId = null;
+  renderBDayEditor();
+  const el = document.getElementById('bday-editor');
+  el.style.display = '';
+  el.scrollIntoView({ behavior:'smooth', block:'start' });
+};
+window.bCloseDay = () => { document.getElementById('bday-editor').style.display='none'; bSelDay=null; };
+
+function renderBDayEditor(){
+  const day = bSelDay;
+  const dow = new Date(bY, bM-1, day).getDay();
+  const evs = bDayEvents(day);
+  let rows = '';
+  for(const ev of evs){
+    rows += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;border:0.5px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;margin-bottom:6px;">'
+      + '<div><div style="font-size:14px;">'+bHHMM(ev.s)+'–'+bHHMM(ev.e)+'　'+bEsc(ev.title)+'</div>'
+      + (ev.recurring ? '<div style="font-size:11px;color:#8a6d1a;">每週重複 · 這裡只會改這一天</div>' : '')
+      + '</div><div style="display:flex;gap:6px;white-space:nowrap;">'
+      + '<button class="btn btn-sm btn-ghost" onclick="bEditEvent(\''+ev.id+'\')">改</button>'
+      + '<button class="btn btn-sm btn-ghost" style="color:var(--red)" onclick="bDeleteEvent(\''+ev.id+'\')">刪</button>'
+      + '</div></div>';
+  }
+  for(const f of bFree(evs.map(e=>({s:e.s,e:e.e})))){
+    rows += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;border:0.5px dashed var(--border2);border-radius:var(--radius-sm);padding:8px 10px;margin-bottom:6px;">'
+      + '<span style="font-size:14px;color:#2f8f4f;">'+bHHMM(f.s)+'–'+bHHMM(f.e)+'　可約</span>'
+      + '<button class="btn btn-sm btn-ghost" onclick="bAddAt('+f.s+','+f.e+')">＋ 排這格</button></div>';
+  }
+  const whoOpts = bWhitelist.map(n=>'<option>'+bEsc(n)+'</option>').join('') + '<option>休息</option><option>自訂…</option>';
+  document.getElementById('bday-editor').innerHTML =
+    '<div style="background:var(--surface);border:1px solid var(--teal);border-radius:var(--radius);padding:14px;">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
+    + '<span style="font-size:16px;font-weight:600;">'+bM+'/'+day+'（週'+B_DOW[dow]+'）</span>'
+    + '<button class="btn btn-sm btn-ghost" onclick="bCloseDay()">關閉</button></div>'
+    + (rows || '<div style="color:var(--text3);font-size:13px;margin-bottom:6px;">這天沒有開放時段</div>')
+    + '<div style="display:flex;gap:8px;margin-top:10px;">'
+    + '<button class="btn btn-sm btn-ghost" style="flex:1" onclick="bAddAt(840,960)">＋ 自訂時段</button>'
+    + '<button class="btn btn-sm btn-ghost" style="flex:1" onclick="bRestAllDay()">整天休息</button></div>'
+    + '<div id="bform" style="display:none;border-top:0.5px solid var(--border);margin-top:12px;padding-top:12px;">'
+    + '<div class="row2"><div class="field"><label>開始</label><input id="bf-time" type="time" step="1800"></div>'
+    + '<div class="field"><label>時長</label><select id="bf-dur"><option value="60">1 小時</option><option value="90">1.5 小時</option><option value="120" selected>2 小時</option><option value="150">2.5 小時</option><option value="180">3 小時</option></select></div></div>'
+    + '<div class="row2"><div class="field"><label>老師</label><select id="bf-ther"><option>神藏</option><option>神庭</option></select></div>'
+    + '<div class="field"><label>對象</label><select id="bf-who" onchange="bWhoChange()">'+whoOpts+'</select></div></div>'
+    + '<div class="field" id="bf-custom-wrap" style="display:none"><label>自訂名稱</label><input id="bf-custom" placeholder="例：王小姐"></div>'
+    + '<div id="bf-msg" style="font-size:13px;color:var(--red);margin-bottom:8px;"></div>'
+    + '<div style="display:flex;gap:8px;"><button class="btn btn-sm btn-ghost" style="flex:1" onclick="bCancelForm()">取消</button>'
+    + '<button class="btn btn-primary btn-sm" style="flex:1" onclick="bSaveEvent()">儲存</button></div></div></div>';
+}
+window.bWhoChange = () => {
+  const v = document.getElementById('bf-who').value;
+  document.getElementById('bf-custom-wrap').style.display = (v==='自訂…') ? '' : 'none';
+  document.getElementById('bf-ther').closest('.field').style.opacity = (v==='休息') ? '.4' : '1';
+};
+function bShowForm(startMin, durMin){
+  const f = document.getElementById('bform');
+  f.style.display = '';
+  document.getElementById('bf-time').value = bHHMM(startMin);
+  const dur = document.getElementById('bf-dur');
+  dur.value = [60,90,120,150,180].includes(durMin) ? String(durMin) : '120';
+  document.getElementById('bf-msg').textContent = '';
+  bWhoChange();
+  f.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+window.bAddAt = (s, e) => { bEditId = null; bShowForm(s, Math.min(e-s, 180)); };
+window.bCancelForm = () => { bEditId = null; document.getElementById('bform').style.display='none'; };
+window.bEditEvent = (id) => {
+  const ev = bDayEvents(bSelDay).find(x=>x.id===id); if(!ev) return;
+  bEditId = id;
+  bShowForm(ev.s, ev.e-ev.s);
+  const p = bParse(ev.title);
+  if(/休息|不開放/.test(ev.title)) document.getElementById('bf-who').value = '休息';
+  else {
+    const sel = document.getElementById('bf-who');
+    if(p.ther) document.getElementById('bf-ther').value = p.ther;
+    if([...sel.options].some(o=>o.value===p.name)) sel.value = p.name;
+    else { sel.value = '自訂…'; document.getElementById('bf-custom').value = p.name; }
+  }
+  bWhoChange();
+};
+window.bSaveEvent = async () => {
+  const msg = document.getElementById('bf-msg'); msg.textContent = '';
+  const t = document.getElementById('bf-time').value;
+  if(!/^\d{2}:\d{2}$/.test(t)){ msg.textContent='請選擇開始時間'; return; }
+  const startMin = (+t.slice(0,2))*60 + (+t.slice(3,5));
+  const dur = parseInt(document.getElementById('bf-dur').value,10);
+  const who = document.getElementById('bf-who').value;
+  let title;
+  if(who==='休息') title = '休息';
+  else {
+    const name = (who==='自訂…') ? document.getElementById('bf-custom').value.trim() : who;
+    if(!name){ msg.textContent='請填寫對象名稱'; return; }
+    title = document.getElementById('bf-ther').value + '：' + name;
+  }
+  await bCallEvent(bEditId ? 'update' : 'add', {
+    eventId: bEditId || undefined,
+    title, startIso: bLocalIso(bSelDay, startMin), endIso: bLocalIso(bSelDay, startMin+dur),
+  });
+};
+window.bDeleteEvent = async (id) => {
+  const ev = bDayEvents(bSelDay).find(x=>x.id===id); if(!ev) return;
+  const warn = ev.recurring ? '\n\n（這是每週重複的行程，只會刪掉這一天）' : '';
+  if(!confirm('確定刪除「'+ev.title+'」'+bHHMM(ev.s)+'–'+bHHMM(ev.e)+'？'+warn)) return;
+  await bCallEvent('delete', { eventId: id });
+};
+window.bRestAllDay = async () => {
+  if(!confirm(bM+'/'+bSelDay+' 整天設為休息？（會新增一筆 09:00–20:00 的休息）')) return;
+  await bCallEvent('add', { title:'休息', startIso: bLocalIso(bSelDay,540), endIso: bLocalIso(bSelDay,1200) });
+};
+async function bCallEvent(op, payload){
+  setSyncing(true);
+  try {
+    const res = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'bEvent', secret: THERAPIST_SHARED_SECRET, op, ...payload }) });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || '操作失敗');
+    await genBMonth();          // 重新讀取＋重畫月曆
+    const d = bSelDay; if(d) bOpenDay(d);
+  } catch(e){
+    alert('失敗：'+e.message);
+  } finally { setSyncing(false); }
 }
 
 window.downloadBImage = async () => {

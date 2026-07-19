@@ -69,6 +69,12 @@ export default {
         return cors(env, json(await handleBMonth(env, body.year, body.month)));
       }
 
+      // 後台專用：在 B 場地行事曆新增／修改／刪除事件（排班面板）
+      if (action === 'bEvent') {
+        requireSecret(body, env);
+        return cors(env, json(await handleBEvent(env, body.op, body)));
+      }
+
       // 以下皆客戶端：需 LINE 身分
       const userId = await verifyLineUser(env, body.idToken);
 
@@ -393,6 +399,44 @@ async function handleAdminCalendar(env, op, bookingId) {
   throw httpErr(400, '未知的日曆操作');
 }
 
+// 後台專用：在 B 場地行事曆新增／修改／刪除單筆事件（後台排班面板用）
+async function handleBEvent(env, op, p) {
+  const calId = env.GOOGLE_CALENDAR_ID_B;
+  if (!calId) throw httpErr(500, '未設定 B 場地行事曆');
+  const token = await googleToken(env);
+  const base = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events`;
+  const auth = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+  if (op === 'add') {
+    const title = String(p.title || '').trim();
+    if (!title || !p.startIso || !p.endIso) throw httpErr(400, '資料不完整');
+    const res = await fetch(base, { method: 'POST', headers: auth, body: JSON.stringify({
+      summary: title,
+      start: { dateTime: p.startIso, timeZone: 'Asia/Taipei' },
+      end: { dateTime: p.endIso, timeZone: 'Asia/Taipei' },
+    })});
+    if (!res.ok) throw httpErr(502, '新增失敗：' + (await res.text()).slice(0, 200));
+    return { ok: true, id: (await res.json()).id };
+  }
+  if (op === 'update') {
+    if (!p.eventId) throw httpErr(400, '缺少事件編號');
+    const body = {};
+    if (p.title) body.summary = String(p.title).trim();
+    if (p.startIso) body.start = { dateTime: p.startIso, timeZone: 'Asia/Taipei' };
+    if (p.endIso) body.end = { dateTime: p.endIso, timeZone: 'Asia/Taipei' };
+    const res = await fetch(`${base}/${encodeURIComponent(p.eventId)}`, { method: 'PATCH', headers: auth, body: JSON.stringify(body) });
+    if (!res.ok) throw httpErr(502, '修改失敗：' + (await res.text()).slice(0, 200));
+    return { ok: true };
+  }
+  if (op === 'delete') {
+    if (!p.eventId) throw httpErr(400, '缺少事件編號');
+    const res = await fetch(`${base}/${encodeURIComponent(p.eventId)}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok && res.status !== 404 && res.status !== 410) throw httpErr(502, '刪除失敗：' + (await res.text()).slice(0, 200));
+    return { ok: true };
+  }
+  throw httpErr(400, '未知操作');
+}
+
 // 後台專用：讀 B 場地行事曆某個月的事件（回原始事件，姓名過濾在後台端做）
 async function handleBMonth(env, year, month) {
   const y = parseInt(year, 10), m = parseInt(month, 10);
@@ -701,6 +745,8 @@ async function calList(env, calendarId, timeMin, timeMax) {
   if (!res.ok) throw httpErr(502, 'calendar list: ' + (await res.text()).slice(0, 200));
   const data = await res.json();
   return (data.items || []).map(ev => ({
+    id: ev.id || '',
+    recurring: !!ev.recurringEventId,          // 是否為「每週重複」展開出來的單筆
     title: ev.summary || '',
     start: (ev.start && (ev.start.dateTime || ev.start.date)) || '',
     end: (ev.end && (ev.end.dateTime || ev.end.date)) || '',
