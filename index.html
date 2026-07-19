@@ -822,8 +822,10 @@ function bHHMM(m){ return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%
 // 速覽用的白話時段：540→「上午9」、840–960→「下午2–4」
 function b12(m){ const h=Math.floor(m/60), mm=m%60, hh = h>12 ? h-12 : h; return mm ? hh+':'+String(mm).padStart(2,'0') : String(hh); }
 function bBandText(f){ return (f.s < 720 ? '上午' : '下午') + b12(f.s) + '–' + b12(f.e); }
-// 月曆格子用的短寫：840–960→「2–4」、870–1050→「2:30–5:30」
-function bShort(f){ return b12(f.s) + '–' + b12(f.e); }
+// 月曆格子用的短寫：840–960→「2–4」；跨中午才加上午/下午避免「9–8」這種誤讀
+function bShort(f){
+  return (f.s < 720 && f.e > 720) ? ('上午'+b12(f.s)+'–下午'+b12(f.e)) : (b12(f.s)+'–'+b12(f.e));
+}
 
 window.openBMonth = async () => {
   const now = new Date(); bY = now.getFullYear(); bM = now.getMonth()+1;
