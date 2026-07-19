@@ -945,15 +945,14 @@ function renderBMonth(events){
   const body = rows.filter(Boolean).map(r => r.map(c => c || empty).join('')).join('');
   document.getElementById('bmonth-canvas').innerHTML =
     '<div id="bmonth-image" style="background:#fffdf9;border-radius:16px;padding:16px;max-width:420px;margin:0 auto;">'
-    + '<div style="text-align:center;margin-bottom:10px;"><div style="font-size:19px;font-weight:600;color:#1f1c18;">B場地 · '+bM+'月 調理時間表</div>'
-    + '<div style="font-size:12px;color:#938b7f;margin-top:4px;">只開放 週一、三、五、六（二、四、日不開放）</div>'
-    + '<div style="font-size:12px;color:#938b7f;">上午 9–12　下午 2–8</div></div>'
+    + '<div style="text-align:center;margin-bottom:10px;"><div style="font-size:19px;font-weight:600;color:#1f1c18;">'+bM+'月 調理時間表</div>'
+    + '<div style="font-size:12px;color:#938b7f;margin-top:4px;">只開放 週一、三、五、六（二、四、日不開放）</div></div>'
     + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;">'+head+body+'</div>'
     + '<div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:12px;">'
     + '<span style="font-size:11px;padding:2px 9px;border-radius:999px;background:#e6f5ec;color:#2f8f4f;">可約</span>'
     + '<span style="font-size:11px;padding:2px 9px;border-radius:999px;background:#eee9df;color:#655f56;">已預約</span>'
     + '<span style="font-size:11px;padding:2px 9px;border-radius:999px;background:#fff3dc;color:#8a6d1a;">休息</span></div>'
-    + '<div style="text-align:center;font-size:11px;color:#938b7f;margin-top:10px;">有事想調時間，群組裡互相喬一下就好 · 看到「可約」歡迎揪親友</div></div>';
+    + '<div style="text-align:center;font-size:11px;color:#938b7f;margin-top:10px;">如想調換時間，群組裡互相喬一下就好 · 「可約」時段歡迎揪親友</div></div>';
 }
 
 // 月曆單格：日期＋當天每段時間（夥伴名字依老師上色／已約／休息／可約）
